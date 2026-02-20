@@ -12,11 +12,11 @@ module Dotf.Profile (
   deactivateProfile,
 ) where
 
-import qualified Data.Map.Strict  as Map
-import qualified Data.Text        as T
+import qualified Data.Map.Strict as Map
+import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Plugin      (resolveDependencies)
+import           Dotf.Plugin     (resolveDependencies)
 import           Dotf.State
 import           Dotf.Types
 

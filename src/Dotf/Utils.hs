@@ -21,14 +21,14 @@ module Dotf.Utils (
   ask',
 ) where
 
-import           Control.Exception   (SomeException, try)
+import           Control.Exception       (SomeException, try)
 import           Data.String.Interpolate (i)
-import           Dotf.Types          (GitEnv (..))
-import           System.Directory    (doesFileExist)
-import           System.FilePath     ((</>))
-import           System.IO           (IOMode (WriteMode), hFlush, stdout,
-                                      withFile)
-import           System.Process      (readProcess)
+import           Dotf.Types              (GitEnv (..))
+import           System.Directory        (doesFileExist)
+import           System.FilePath         ((</>))
+import           System.IO               (IOMode (WriteMode), hFlush, stdout,
+                                          withFile)
+import           System.Process          (readProcess)
 
 -----------------------
 -- Git path builders --

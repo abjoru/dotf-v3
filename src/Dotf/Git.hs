@@ -43,6 +43,7 @@ module Dotf.Git (
 
   -- * Queries
   hasBareRepo,
+  gitAheadBehind,
 
   -- * Result processing
   processFileListResult,
@@ -50,6 +51,7 @@ module Dotf.Git (
   mapEitherM,
 ) where
 
+import           Control.Exception          (SomeException, try)
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Data.Function              ((&))
@@ -248,6 +250,26 @@ gitRaw env args = do
 -- | Check if a bare repo exists.
 hasBareRepo :: GitEnv -> IO Bool
 hasBareRepo env = doesDirectoryExist (dotfGitDir env)
+
+-- | Get (ahead, behind) counts relative to upstream.
+-- Falls back to (0,0) on any error.
+gitAheadBehind :: GitEnv -> IO (Int, Int)
+gitAheadBehind env = do
+  result <- try go :: IO (Either SomeException (Int, Int))
+  pure $ either (const (0, 0)) id result
+  where
+    go = do
+      cfg <- gitBare env ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]
+      (exit, out, _) <- PT.readProcess cfg
+      case exit of
+        PT.ExitFailure _ -> pure (0, 0)
+        PT.ExitSuccess   -> pure $ parseCounts (C8.unpack out)
+    parseCounts s = case words s of
+      [a, b] -> (readDef 0 a, readDef 0 b)
+      _      -> (0, 0)
+    readDef d str' = case reads str' of
+      [(n, "")] -> n
+      _         -> d
 
 -----------------------
 -- Result processing --

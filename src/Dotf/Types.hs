@@ -47,14 +47,13 @@ module Dotf.Types (
   wlPaths,
 ) where
 
-import           Data.Aeson              (FromJSON (..), ToJSON (..),
-                                          Value (..), object, withObject,
-                                          (.!=), (.:), (.:?), (.=))
-import           Data.Aeson.Types        (Parser)
-import qualified Data.Map.Strict         as Map
-import           Data.Text               (Text)
-import qualified Data.Text               as T
-import           Lens.Micro.TH           (makeLenses)
+import           Data.Aeson       (FromJSON (..), ToJSON (..), Value (..),
+                                   object, withObject, (.!=), (.:), (.:?), (.=))
+import           Data.Aeson.Types (Parser)
+import qualified Data.Map.Strict  as Map
+import           Data.Text        (Text)
+import qualified Data.Text        as T
+import           Lens.Micro.TH    (makeLenses)
 
 -----------
 -- Types --

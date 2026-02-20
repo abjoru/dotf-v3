@@ -150,14 +150,14 @@ spec = do
       -- List
       r3 <- listWatchPaths env
       case r3 of
-        Left err -> expectationFailure $ show err
+        Left err    -> expectationFailure $ show err
         Right paths -> length paths `shouldBe` 2
       -- Remove
       r4 <- removeWatchPath env ".config/"
       r4 `shouldBe` Right ()
       r5 <- listWatchPaths env
       case r5 of
-        Left err -> expectationFailure $ show err
+        Left err    -> expectationFailure $ show err
         Right paths -> length paths `shouldBe` 1
 
     it "classifyUntracked sorts correctly" $ do
