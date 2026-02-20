@@ -28,6 +28,9 @@ withTestEnv action = do
   case result of
     Left err -> expectationFailure $ "Failed to init bare repo: " ++ show err
     Right () -> do
+      -- Configure git user for CI environments
+      _ <- runGit env ["config", "user.email", "test@test.com"]
+      _ <- runGit env ["config", "user.name", "Test"]
       action env
       -- Cleanup
       removeDirectoryRecursive tmpDir
@@ -119,8 +122,10 @@ spec = do
     it "profile create/activate blocks on unassigned files" $ withTestEnv $ \env -> do
       setupTestFiles env
       -- Track files without assigning to plugins
-      _ <- gitAdd env ".zshrc"
-      _ <- gitCommit env "initial"
+      r0a <- gitAdd env ".zshrc"
+      r0a `shouldBe` Right ()
+      r0b <- gitCommit env "initial"
+      r0b `shouldBe` Right ()
       -- Create profile
       _ <- createPlugin env "shell" Nothing
       r1 <- createProfile env "test" ["shell"]
