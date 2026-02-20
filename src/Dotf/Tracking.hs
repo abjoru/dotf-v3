@@ -4,6 +4,7 @@ module Dotf.Tracking (
 
   -- * IO
   trackFile,
+  reassignFiles,
   untrackFile,
   ignorePattern,
   discoverUntracked,
@@ -14,12 +15,13 @@ module Dotf.Tracking (
 ) where
 
 import           Control.Exception (IOException, try)
+import           Control.Monad     (foldM)
 import qualified Data.Map.Strict   as Map
+import qualified Data.Set          as Set
 import qualified Data.Text         as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path         (consolidatePaths, isSubpathOf,
-                                    normalizePath)
+import           Dotf.Path         (isSubpathOf, normalizePath)
 import           Dotf.State
 import           Dotf.Types
 import           Dotf.Utils        (appendToFile, gitIgnoreFile)
@@ -50,31 +52,74 @@ classifyUntracked files plugins watchPaths =
         (m:_) -> Just m
         []    -> Nothing
 
--- | Track a file: git add + assign to plugin.
+-- | Track a file: git add + optionally assign to plugin with conflict resolution.
 trackFile :: GitEnv -> RelPath -> Maybe PluginName -> IO (Either DotfError ())
 trackFile env path mPlugin = do
-  -- Normalize the path
   let relPath = normalizePath (_geHome env) path
-  -- Git add
   addResult <- gitAdd env relPath
   case addResult of
     Left err -> pure $ Left err
+    Right () -> case mPlugin of
+      Nothing       -> pure $ Right ()
+      Just plugName -> reassignFiles env [relPath] plugName
+
+-- | Assign files to a plugin, resolving cross-plugin path conflicts.
+-- For each other plugin, directory-level paths that overlap with the reassigned
+-- files are expanded to individual tracked files (minus the reassigned ones).
+reassignFiles :: GitEnv -> [RelPath] -> PluginName -> IO (Either DotfError ())
+reassignFiles env paths plugName = do
+  let relPaths = map (normalizePath (_geHome env)) paths
+  -- Git add each file
+  addResult <- foldM (\acc fp -> case acc of
+    Left err -> pure $ Left err
+    Right () -> gitAdd env fp
+    ) (Right ()) relPaths
+  case addResult of
+    Left err -> pure $ Left err
     Right () -> do
-      -- Assign to plugin if specified
-      case mPlugin of
-        Nothing -> pure $ Right ()
-        Just plugName -> do
-          cfgResult <- loadPluginConfig env
-          case cfgResult of
-            Left err -> pure $ Left err
-            Right cfg ->
-              case Map.lookup plugName (_pcPlugins cfg) of
-                Nothing -> pure $ Left $ PluginNotFound plugName
-                Just plugin -> do
-                  let updatedPlugin = plugin { _pluginPaths = consolidatePaths (_pluginPaths plugin) relPath }
-                      newCfg = cfg { _pcPlugins = Map.insert plugName updatedPlugin (_pcPlugins cfg) }
-                  savePluginConfig env newCfg
-                  pure $ Right ()
+      cfgResult <- loadPluginConfig env
+      case cfgResult of
+        Left err -> pure $ Left err
+        Right cfg -> case Map.lookup plugName (_pcPlugins cfg) of
+          Nothing -> pure $ Left $ PluginNotFound plugName
+          Just _  -> do
+            trackedResult <- gitTracked env
+            case trackedResult of
+              Left err -> pure $ Left err
+              Right allTracked -> do
+                let fileSet = Set.fromList relPaths
+                    -- Resolve conflicts in all other plugins
+                    updatedPlugins = Map.mapWithKey (\k p ->
+                      if k == plugName then p
+                      else p { _pluginPaths = concatMap (splitPath fileSet allTracked) (_pluginPaths p) }
+                      ) (_pcPlugins cfg)
+                    -- Add paths to target plugin (no consolidation — avoids
+                    -- collapsing siblings into a parent that overlaps other plugins)
+                    target = updatedPlugins Map.! plugName
+                    existing = _pluginPaths target
+                    -- Drop existing paths already covered by new ones
+                    kept = filter (\e -> not $ any (`isSubpathOf` e) relPaths) existing
+                    -- Only add new paths not already covered by kept
+                    toAdd = filter (\p -> not $ any (`isSubpathOf` p) kept) relPaths
+                    target' = kept ++ toAdd
+                    finalPlugins = Map.insert plugName (target { _pluginPaths = target' }) updatedPlugins
+                    newCfg = cfg { _pcPlugins = finalPlugins }
+                savePluginConfig env newCfg
+                pure $ Right ()
+
+-- | Resolve a single plugin path against a set of reassigned files.
+-- Returns replacement paths (empty list = remove, singleton = keep, multiple = expanded).
+splitPath :: Set.Set RelPath -> [RelPath] -> RelPath -> [RelPath]
+splitPath fileSet allTracked pluginPath
+  -- A reassigned path is parent of (or equal to) this plugin path: remove
+  | any (\f -> f `isSubpathOf` pluginPath) (Set.toList fileSet) = []
+  -- This plugin path is parent of some reassigned file: expand and exclude
+  | any (pluginPath `isSubpathOf`) (Set.toList fileSet) =
+      let coveredFiles = filter (pluginPath `isSubpathOf`) allTracked
+          remaining = filter (`Set.notMember` fileSet) coveredFiles
+      in remaining
+  -- No conflict
+  | otherwise = [pluginPath]
 
 -- | Untrack a file: git rm --cached + remove from plugin.
 untrackFile :: GitEnv -> RelPath -> IO (Either DotfError ())

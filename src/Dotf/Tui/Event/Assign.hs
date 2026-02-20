@@ -6,15 +6,13 @@ import           Brick                  (BrickEvent (..))
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.Edit     as E
 import qualified Brick.Widgets.List     as L
-import           Control.Monad          (foldM)
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Set               as Set
 import qualified Data.Text              as T
 import           Dotf.Plugin            (createPlugin)
-import           Dotf.Tracking          (trackFile)
+import           Dotf.Tracking          (reassignFiles)
 import           Dotf.Tui.Types
-import           Dotf.Types             (DotfError, GitEnv, PluginName, RelPath,
-                                         displayError)
+import           Dotf.Types             (displayError)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
@@ -84,16 +82,16 @@ doAssign = do
       case L.listSelectedElement al of
         Nothing -> pure ()
         Just (_, (pluginName, _)) -> do
-          errs <- liftIO $ trackFiles env fps (Just pluginName)
-          if null errs
-            then do
+          result <- liftIO $ reassignFiles env fps pluginName
+          case result of
+            Left err -> stError .= Just [displayError err]
+            Right () -> do
               stPopup .= Nothing
               stFocus .= FTracked
               stSelected .= Set.empty
               st' <- get
               st'' <- liftIO $ syncAll st'
               put st''
-            else stError .= Just (map displayError errs)
 
 -- | Create new plugin and assign file(s) to it.
 doCreateAndAssign :: EventM RName State ()
@@ -113,9 +111,10 @@ doCreateAndAssign = do
           case createResult of
             Left err -> stError .= Just [displayError err]
             Right () -> do
-              errs <- liftIO $ trackFiles env fps (Just pname)
-              if null errs
-                then do
+              result <- liftIO $ reassignFiles env fps pname
+              case result of
+                Left err -> stError .= Just [displayError err]
+                Right () -> do
                   stPopup .= Nothing
                   stAssignEditing .= False
                   stFocus .= FTracked
@@ -123,15 +122,3 @@ doCreateAndAssign = do
                   st' <- get
                   st'' <- liftIO $ syncAll st'
                   put st''
-                else stError .= Just (map displayError errs)
-
--- | Track multiple files, collecting errors.
-trackFiles :: GitEnv -> [RelPath] -> Maybe PluginName -> IO [DotfError]
-trackFiles env fps mPlug = do
-  results <- foldM (\acc fp -> do
-    r <- trackFile env fp mPlug
-    pure $ case r of
-      Left err -> err : acc
-      Right () -> acc
-    ) [] fps
-  pure (reverse results)
