@@ -1,9 +1,9 @@
 module PathSpec (spec) where
 
-import qualified Data.Map.Strict    as Map
+import qualified Data.Map.Strict     as Map
 import           Dotf.Path
 import           Dotf.Types
-import           Gen                (genRelPath)
+import           Gen                 (genRelPath)
 import           Hedgehog
 import           Test.Hspec
 import           Test.Hspec.Hedgehog (hedgehog)

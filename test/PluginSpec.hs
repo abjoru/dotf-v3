@@ -84,7 +84,7 @@ spec = do
             ]
       case validatePaths plugins of
         Left (PathConflict _ _ _) -> success
-        other -> annotateShow other >> failure
+        other                     -> annotateShow other >> failure
 
 elemIndex' :: Eq a => a -> [a] -> Int
 elemIndex' _ [] = -1

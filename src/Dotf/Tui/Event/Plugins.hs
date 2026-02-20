@@ -1,0 +1,97 @@
+module Dotf.Tui.Event.Plugins (
+  handlePluginsEvent,
+) where
+
+import           Brick                  (BrickEvent (..), suspendAndResume)
+import           Brick.Types            (EventM, get, put)
+import qualified Brick.Widgets.List     as L
+import           Control.Monad.IO.Class (liftIO)
+import qualified Data.Text              as T
+import           Dotf.Plugin            (createPlugin, installPlugins)
+import           Dotf.Tui.Types
+import           Dotf.Types
+import           Dotf.Utils             (editFile, pluginsFile)
+import qualified Graphics.Vty           as V
+import           Lens.Micro             ((^.))
+import           Lens.Micro.Mtl         (use, zoom, (.=))
+
+-- | Handle events in Plugins tab.
+handlePluginsEvent :: BrickEvent RName DEvent -> EventM RName State ()
+-- Navigation
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = navList (V.EvKey V.KDown [])
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = navList (V.EvKey V.KUp [])
+handlePluginsEvent (VtyEvent ev@(V.EvKey V.KDown []))     = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey V.KUp []))       = navList ev
+
+-- n: new plugin (external editor)
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
+  st <- get
+  let env = st ^. stEnv
+  suspendAndResume $ do
+    putStr "Plugin name: "
+    name <- getLine
+    putStr "Description (optional): "
+    desc <- getLine
+    let mDesc = if null desc then Nothing else Just (T.pack desc)
+    result <- createPlugin env (T.pack name) mDesc
+    case result of
+      Left err -> putStrLn $ "Error: " ++ show err
+      Right () -> putStrLn $ "Created plugin: " ++ name
+    putStrLn "Press Enter to continue..."
+    _ <- getLine
+    syncPlugins st
+
+-- e: edit plugins.yaml
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = do
+  st <- get
+  let env = st ^. stEnv
+  suspendAndResume $ do
+    editFile (pluginsFile env)
+    syncPlugins st
+
+-- D: delete plugin (triggers confirm)
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'D') [])) = do
+  mPlugin <- getSelectedPlugin
+  case mPlugin of
+    Nothing -> pure ()
+    Just (p, _) ->
+      stConfirm .= Just ("Delete plugin " ++ T.unpack (_pluginName p) ++ "?", ConfirmDeletePlugin (_pluginName p))
+
+-- i: install selected plugin
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'i') [])) = do
+  mPlugin <- getSelectedPlugin
+  case mPlugin of
+    Nothing -> pure ()
+    Just (p, _) -> do
+      st <- get
+      let env = st ^. stEnv
+      result <- liftIO $ installPlugins env [_pluginName p]
+      case result of
+        Left err -> stError .= Just [show err]
+        Right () -> do
+          st' <- liftIO $ syncPlugins st
+          put st'
+
+-- r: remove selected plugin (triggers confirm)
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
+  mPlugin <- getSelectedPlugin
+  case mPlugin of
+    Nothing -> pure ()
+    Just (p, _) ->
+      stConfirm .= Just ("Remove plugin " ++ T.unpack (_pluginName p) ++ "?", ConfirmRemovePlugin (_pluginName p))
+
+handlePluginsEvent _ = pure ()
+
+-- | Navigate plugin list.
+navList :: V.Event -> EventM RName State ()
+navList ev = do
+  f <- use stFocus
+  case f of
+    FPluginList -> zoom stPluginListW $ L.handleListEvent ev
+    _           -> pure ()
+
+-- | Get currently selected plugin.
+getSelectedPlugin :: EventM RName State (Maybe (Plugin, Bool))
+getSelectedPlugin = do
+  pl <- use stPluginListW
+  pure $ snd <$> L.listSelectedElement pl

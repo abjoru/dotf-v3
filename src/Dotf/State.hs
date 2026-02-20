@@ -4,9 +4,9 @@ module Dotf.State (
   defaultLocalState,
 ) where
 
-import qualified Data.Yaml       as Y
+import qualified Data.Yaml        as Y
 import           Dotf.Types
-import           Dotf.Utils      (stateDir, stateFile)
+import           Dotf.Utils       (stateDir, stateFile)
 import           System.Directory (createDirectoryIfMissing, doesFileExist)
 
 -- | Load local state from ~/.local/state/dotf/state.yaml.
@@ -20,8 +20,8 @@ loadLocalState env = do
     else do
       result <- Y.decodeFileEither path
       case result of
-        Left _    -> pure defaultLocalState
-        Right st  -> pure st
+        Left _   -> pure defaultLocalState
+        Right st -> pure st
 
 -- | Save local state, creating directory if needed.
 saveLocalState :: GitEnv -> LocalState -> IO ()

@@ -13,14 +13,14 @@ module Dotf.Tracking (
   listWatchPaths,
 ) where
 
-import qualified Data.Map.Strict  as Map
-import qualified Data.Text        as T
+import qualified Data.Map.Strict as Map
+import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path        (isSubpathOf, normalizePath)
+import           Dotf.Path       (isSubpathOf, normalizePath)
 import           Dotf.State
 import           Dotf.Types
-import           Dotf.Utils       (appendToFile, gitIgnoreFile)
+import           Dotf.Utils      (appendToFile, gitIgnoreFile)
 
 -- | Classify untracked files into plugin-scoped and watchlist buckets.
 -- Files under a plugin's paths go to plugin bucket, remainder to watchlist

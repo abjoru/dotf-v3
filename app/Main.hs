@@ -4,6 +4,7 @@ import           Dotf.Commands
 import           Dotf.Git         (hasBareRepo)
 import           Dotf.Options
 import           Dotf.Templates   (missingRepoMessage)
+import           Dotf.Tui         (tui)
 import           Dotf.Types       (GitEnv (..))
 import           System.Directory (getHomeDirectory)
 import           System.Exit      (exitFailure)
@@ -12,8 +13,17 @@ main :: IO ()
 main = do
   home <- getHomeDirectory
   let env = GitEnv home
-  cmd <- readOpts
-  dispatch env cmd
+  mCmd <- readOptsOrTui
+  case mCmd of
+    Nothing  -> launchTui env
+    Just cmd -> dispatch env cmd
+
+launchTui :: GitEnv -> IO ()
+launchTui env = do
+  exists <- hasBareRepo env
+  if not exists
+    then putStrLn missingRepoMessage >> exitFailure
+    else tui env
 
 dispatch :: GitEnv -> Command -> IO ()
 -- Setup commands (don't require existing repo)

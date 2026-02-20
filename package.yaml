@@ -30,6 +30,9 @@ dependencies:
 - vector
 - optparse-applicative
 - containers
+- brick
+- vty
+- text-zipper
 
 default-extensions:
 - OverloadedStrings

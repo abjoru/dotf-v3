@@ -8,11 +8,11 @@ module Dotf.Config (
   validatePluginConfig,
 ) where
 
-import qualified Data.Map.Strict as Map
-import           Data.Text       (pack)
-import qualified Data.Yaml       as Y
+import qualified Data.Map.Strict  as Map
+import           Data.Text        (pack)
+import qualified Data.Yaml        as Y
 import           Dotf.Types
-import           Dotf.Utils      (pluginsFile, profilesFile)
+import           Dotf.Utils       (pluginsFile, profilesFile)
 import           System.Directory (doesFileExist)
 
 -- | Load plugin config from ~/.config/dotf/plugins.yaml.

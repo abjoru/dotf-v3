@@ -14,9 +14,9 @@ module Dotf.Plugin (
   removePlugins,
 ) where
 
-import qualified Data.Map.Strict  as Map
-import           Data.Text        (Text)
-import qualified Data.Text        as T
+import qualified Data.Map.Strict as Map
+import           Data.Text       (Text)
+import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
 import           Dotf.State

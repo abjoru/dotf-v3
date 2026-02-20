@@ -5,6 +5,7 @@ module Dotf.Options (
   WatchlistCommand(..),
 
   readOpts,
+  readOptsOrTui,
   commandParser,
 ) where
 
@@ -256,6 +257,13 @@ commandParser = parseCommand
 
 readOpts :: IO Command
 readOpts = execParser $ info (parseCommand <**> helper <**> versionOpt)
+  (  fullDesc
+  <> progDesc [__i|dotf v#{showVersion version} - Modular dotfile manager|]
+  )
+
+-- | Parse command or return Nothing (launch TUI).
+readOptsOrTui :: IO (Maybe Command)
+readOptsOrTui = execParser $ info (optional parseCommand <**> helper <**> versionOpt)
   (  fullDesc
   <> progDesc [__i|dotf v#{showVersion version} - Modular dotfile manager|]
   )

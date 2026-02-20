@@ -43,12 +43,12 @@ module Dotf.Commands (
   runGitRaw,
 ) where
 
-import qualified Data.Map.Strict    as Map
-import           Data.Text          (Text)
-import qualified Data.Text          as T
+import qualified Data.Map.Strict      as Map
+import           Data.Text            (Text)
+import qualified Data.Text            as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path          (findMatchingPlugin, normalizePath)
+import           Dotf.Path            (findMatchingPlugin, normalizePath)
 import           Dotf.Plugin
 import           Dotf.Profile
 import           Dotf.State
@@ -56,8 +56,9 @@ import           Dotf.Templates
 import           Dotf.Tracking
 import           Dotf.Types
 import           Dotf.Utils
-import           System.Directory   (createDirectoryIfMissing, doesDirectoryExist)
-import           System.Exit        (exitFailure)
+import           System.Directory     (createDirectoryIfMissing,
+                                       doesDirectoryExist)
+import           System.Exit          (exitFailure)
 import qualified System.Process.Typed as PT
 
 -----------

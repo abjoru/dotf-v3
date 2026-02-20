@@ -8,3 +8,5 @@
 .HTF/
 .ghc.environment.*
 dist-newstyle/
+CLAUDE.md
+.claude/

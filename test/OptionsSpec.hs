@@ -45,36 +45,36 @@ parseArgs args =
 -- Predicates
 isPluginList :: Maybe Command -> Bool
 isPluginList (Just (PluginCmd PluginList)) = True
-isPluginList _ = False
+isPluginList _                             = False
 
 isProfileActivate :: Maybe Command -> Bool
 isProfileActivate (Just (ProfileCmd (ProfileActivate _))) = True
-isProfileActivate _ = False
+isProfileActivate _                                       = False
 
 isTrackWithPlugin :: Maybe Command -> Bool
 isTrackWithPlugin (Just (Track _ (Just _))) = True
-isTrackWithPlugin _ = False
+isTrackWithPlugin _                         = False
 
 isSaveWithMsg :: Maybe Command -> Bool
 isSaveWithMsg (Just (Save (Just _))) = True
-isSaveWithMsg _ = False
+isSaveWithMsg _                      = False
 
 isGitRaw :: Maybe Command -> Bool
 isGitRaw (Just (GitRaw _)) = True
-isGitRaw _ = False
+isGitRaw _                 = False
 
 isInitWithProfile :: Maybe Command -> Bool
 isInitWithProfile (Just (Init _ (Just _))) = True
-isInitWithProfile _ = False
+isInitWithProfile _                        = False
 
 isPluginInstallMulti :: Maybe Command -> Bool
 isPluginInstallMulti (Just (PluginCmd (PluginInstall xs))) = length xs > 1
-isPluginInstallMulti _ = False
+isPluginInstallMulti _                                     = False
 
 isWatchlistAdd :: Maybe Command -> Bool
 isWatchlistAdd (Just (WatchlistCmd (WatchlistAdd _))) = True
-isWatchlistAdd _ = False
+isWatchlistAdd _                                      = False
 
 isStatus :: Maybe Command -> Bool
 isStatus (Just Status) = True
-isStatus _ = False
+isStatus _             = False

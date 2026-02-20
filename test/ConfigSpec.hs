@@ -5,7 +5,8 @@ import qualified Data.Map.Strict     as Map
 import qualified Data.Yaml           as Y
 import           Dotf.Config
 import           Dotf.Types
-import           Gen                 (genPluginConfig, genProfileConfig, genLocalState)
+import           Gen                 (genLocalState, genPluginConfig,
+                                      genProfileConfig)
 import           Hedgehog
 import           Test.Hspec
 import           Test.Hspec.Hedgehog (hedgehog)
@@ -17,14 +18,14 @@ spec = do
       cfg <- forAll genPluginConfig
       let encoded = Y.encode cfg
       case Y.decodeEither' encoded :: Either Y.ParseException PluginConfig of
-        Left err  -> do annotateShow err; failure
+        Left err   -> do annotateShow err; failure
         Right cfg' -> cfg === cfg'
 
     it "ProfileConfig" $ hedgehog $ do
       cfg <- forAll genProfileConfig
       let encoded = Y.encode cfg
       case Y.decodeEither' encoded :: Either Y.ParseException ProfileConfig of
-        Left err  -> do annotateShow err; failure
+        Left err   -> do annotateShow err; failure
         Right cfg' -> cfg === cfg'
 
     it "LocalState" $ hedgehog $ do
