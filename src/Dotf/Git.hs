@@ -194,15 +194,15 @@ gitInitBare env = do
 
 -- | Initialize sparse checkout.
 gitSparseCheckoutInit :: GitEnv -> IO (Either DotfError ())
-gitSparseCheckoutInit env = runGit env ["sparse-checkout", "init"]
+gitSparseCheckoutInit env = runGit env ["sparse-checkout", "init", "--no-cone"]
 
 -- | Set sparse checkout patterns (replaces existing).
 gitSparseCheckoutSet :: GitEnv -> [FilePath] -> IO (Either DotfError ())
-gitSparseCheckoutSet env paths = runGit env (["sparse-checkout", "set"] ++ paths)
+gitSparseCheckoutSet env paths = runGit env (["sparse-checkout", "set", "--no-cone"] ++ paths)
 
 -- | Add paths to sparse checkout.
 gitSparseCheckoutAdd :: GitEnv -> [FilePath] -> IO (Either DotfError ())
-gitSparseCheckoutAdd env paths = runGit env (["sparse-checkout", "add"] ++ paths)
+gitSparseCheckoutAdd env paths = runGit env (["sparse-checkout", "add", "--no-cone"] ++ paths)
 
 -- | List current sparse checkout patterns.
 gitSparseCheckoutList :: GitEnv -> IO (Either DotfError [FilePath])

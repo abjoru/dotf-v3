@@ -3,6 +3,8 @@ module Dotf.Commands (
   runInit,
   runNew,
   runMigrate,
+  migrate,
+  scaffoldMetadata,
 
   -- * Plugin commands
   runPluginList,
@@ -95,15 +97,23 @@ runNew env = do
 
 runMigrate :: GitEnv -> IO ()
 runMigrate env = do
+  result <- migrate env
+  case result of
+    Left err -> handleError err
+    Right () -> putStrLn migrateSuccessMessage
+
+-- | Core migration logic: scaffold metadata and git-add config files.
+-- Returns Left on missing repo instead of calling exitFailure.
+migrate :: GitEnv -> IO (Either DotfError ())
+migrate env = do
   exists <- doesDirectoryExist (dotfGitDir env)
   if not exists
-    then putStrLn missingRepoMessage >> exitFailure
+    then pure $ Left (ConfigError "Missing bare repository at ~/.dotf")
     else do
       scaffoldMetadata env
-      -- Track the metadata files
       _ <- gitAdd env ".config/dotf/plugins.yaml"
       _ <- gitAdd env ".config/dotf/profiles.yaml"
-      putStrLn migrateSuccessMessage
+      pure $ Right ()
 
 scaffoldMetadata :: GitEnv -> IO ()
 scaffoldMetadata env = do
