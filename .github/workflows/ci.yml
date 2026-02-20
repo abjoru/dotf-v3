@@ -8,32 +8,20 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, name: linux-x86_64 }
+          - { os: macos-latest,  name: macos-arm64  }
+    runs-on: ${{ matrix.os }}
+    name: build (${{ matrix.name }})
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: haskell-actions/setup@v2
-        id: setup
+      - uses: freckle/stack-action@v5
         with:
-          ghc-version: '9.4.8'
-          enable-stack: true
-          stack-version: 'latest'
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.stack
-            .stack-work
-          key: stack-${{ runner.os }}-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
-          restore-keys: |
-            stack-${{ runner.os }}-
-
-      - name: Build dependencies
-        run: stack build --only-dependencies --test --no-run-tests
-
-      - name: Build
-        run: stack build --test --no-run-tests --pedantic
+          stack-build-arguments: --fast --pedantic --test --no-run-tests
 
       - name: Test
-        run: stack test
+        run: stack test --fast

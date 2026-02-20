@@ -6,48 +6,73 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: freckle/stack-action@v5
+        with:
+          stack-build-arguments: --copy-bins --local-bin-path=./dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-binary
+          path: dist/dotf
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: freckle/stack-action@v5
+        with:
+          stack-build-arguments: --copy-bins --local-bin-path=./dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-binary
+          path: dist/dotf
+
+  source-archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: git archive --format=tar.gz --prefix=dotf-${{ github.ref_name }}/ -o dotf-${{ github.ref_name }}.tar.gz HEAD
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-archive
+          path: dotf-${{ github.ref_name }}.tar.gz
+
+  publish-release:
+    needs: [build-linux, build-macos, source-archive]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: haskell-actions/setup@v2
+      - uses: actions/download-artifact@v4
         with:
-          ghc-version: '9.4.8'
-          enable-stack: true
-          stack-version: 'latest'
+          path: artifacts
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.stack
-            .stack-work
-          key: stack-${{ runner.os }}-${{ hashFiles('stack.yaml.lock', 'package.yaml') }}
-          restore-keys: |
-            stack-${{ runner.os }}-
-
-      - name: Build dependencies
-        run: stack build --only-dependencies
-
-      - name: Build release binary
-        run: stack build --copy-bins --local-bin-path=./dist
-
-      - name: Test
-        run: stack test
-
-      - name: Package
+      - name: Package binaries
         run: |
-          cd dist
-          tar czf dotf-${{ github.ref_name }}-linux-x86_64.tar.gz dotf
-          sha256sum dotf-${{ github.ref_name }}-linux-x86_64.tar.gz > checksums.txt
+          VERSION=${{ github.ref_name }}
+          mv artifacts/linux-binary/dotf "dotf-${VERSION}-linux-x86_64"
+          mv artifacts/macos-binary/dotf "dotf-${VERSION}-macos-arm64"
+          mv artifacts/source-archive/*.tar.gz .
+          chmod +x "dotf-${VERSION}-linux-x86_64" "dotf-${VERSION}-macos-arm64"
+          sha256sum dotf-${VERSION}-* > checksums.txt
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/dotf-${{ github.ref_name }}-linux-x86_64.tar.gz
-            dist/checksums.txt
+            dotf-${{ github.ref_name }}-linux-x86_64
+            dotf-${{ github.ref_name }}-macos-arm64
+            dotf-${{ github.ref_name }}.tar.gz
+            checksums.txt
