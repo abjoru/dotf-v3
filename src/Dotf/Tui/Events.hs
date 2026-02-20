@@ -16,6 +16,7 @@ import           Dotf.Tui.Event.Plugins  (handlePluginsEvent)
 import           Dotf.Tui.Event.Profiles (handleProfilesEvent)
 import           Dotf.Tui.Event.Save     (handleSaveEvent)
 import           Dotf.Tui.Types
+import           Dotf.Types              (displayError)
 import qualified Graphics.Vty            as V
 import           Lens.Micro              ((^.))
 import           Lens.Micro.Mtl          (use, zoom, (.=))
@@ -79,7 +80,7 @@ executeConfirm (ConfirmUntrack fp) = do
   let env = st ^. stEnv
   result <- liftIO $ untrackFile env fp
   case result of
-    Left err -> stError .= Just [show err]
+    Left err -> stError .= Just [displayError err]
     Right () -> do
       st' <- liftIO $ syncAll st
       put st'
@@ -88,7 +89,7 @@ executeConfirm (ConfirmDeletePlugin name) = do
   let env = st ^. stEnv
   result <- liftIO $ deletePlugin env name
   case result of
-    Left err -> stError .= Just [show err]
+    Left err -> stError .= Just [displayError err]
     Right () -> do
       st' <- liftIO $ syncPlugins st
       put st'
@@ -97,7 +98,7 @@ executeConfirm (ConfirmRemovePlugin name) = do
   let env = st ^. stEnv
   result <- liftIO $ removePlugins env [name]
   case result of
-    Left err -> stError .= Just [show err]
+    Left err -> stError .= Just [displayError err]
     Right () -> do
       st' <- liftIO $ syncAll st
       put st'
@@ -106,7 +107,7 @@ executeConfirm (ConfirmDeleteProfile name) = do
   let env = st ^. stEnv
   result <- liftIO $ deleteProfile env name
   case result of
-    Left err -> stError .= Just [show err]
+    Left err -> stError .= Just [displayError err]
     Right () -> do
       st' <- liftIO $ syncProfiles st
       put st'
@@ -115,7 +116,7 @@ executeConfirm ConfirmDeactivateProfile = do
   let env = st ^. stEnv
   result <- liftIO $ deactivateProfile env
   case result of
-    Left err -> stError .= Just [show err]
+    Left err -> stError .= Just [displayError err]
     Right () -> do
       st' <- liftIO $ syncAll st
       put st'

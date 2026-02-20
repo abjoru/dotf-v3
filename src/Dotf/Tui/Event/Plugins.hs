@@ -62,7 +62,7 @@ handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'i') [])) = do
       let env = st ^. stEnv
       result <- liftIO $ installPlugins env [_pluginName p]
       case result of
-        Left err -> stError .= Just [show err]
+        Left err -> stError .= Just [displayError err]
         Right () -> do
           st' <- liftIO $ syncPlugins st
           put st'

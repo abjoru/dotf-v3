@@ -9,6 +9,7 @@ import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Text              as T
 import           Dotf.Tracking          (ignorePattern)
 import           Dotf.Tui.Types
+import           Dotf.Types             (displayError)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
 import           Lens.Micro.Mtl         (zoom, (.=))
@@ -30,7 +31,7 @@ handleIgnoreEvent (VtyEvent (V.EvKey V.KEnter [])) = do
     else do
       result <- liftIO $ ignorePattern env (T.strip pattern')
       case result of
-        Left err -> stError .= Just [show err]
+        Left err -> stError .= Just [displayError err]
         Right () -> do
           stPopup .= Nothing
           stFocus .= FUntracked

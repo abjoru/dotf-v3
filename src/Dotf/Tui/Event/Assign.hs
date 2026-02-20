@@ -13,7 +13,8 @@ import qualified Data.Text              as T
 import           Dotf.Plugin            (createPlugin)
 import           Dotf.Tracking          (trackFile)
 import           Dotf.Tui.Types
-import           Dotf.Types             (DotfError, GitEnv, PluginName, RelPath)
+import           Dotf.Types             (DotfError, GitEnv, PluginName, RelPath,
+                                         displayError)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
@@ -46,9 +47,21 @@ handleAssignEvent (VtyEvent (V.EvKey V.KEnter [])) = do
     then doCreateAndAssign
     else doAssign
 
+-- j/k: vim nav when not editing
+handleAssignEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = viNav V.KDown
+handleAssignEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = viNav V.KUp
+
 -- Fallback: editor when editing, list nav otherwise
 handleAssignEvent (VtyEvent ev) = navOrEdit ev
 handleAssignEvent _ = pure ()
+
+-- | Vi-style navigation (only when not editing).
+viNav :: V.Key -> EventM RName State ()
+viNav k = do
+  editing <- use stAssignEditing
+  if editing
+    then zoom stAssignEditor $ E.handleEditorEvent (VtyEvent (V.EvKey k []))
+    else zoom stAssignList $ L.handleListEvent (V.EvKey k [])
 
 -- | Route event to list nav or editor depending on editing state.
 navOrEdit :: V.Event -> EventM RName State ()
@@ -80,7 +93,7 @@ doAssign = do
               st' <- get
               st'' <- liftIO $ syncAll st'
               put st''
-            else stError .= Just (map show errs)
+            else stError .= Just (map displayError errs)
 
 -- | Create new plugin and assign file(s) to it.
 doCreateAndAssign :: EventM RName State ()
@@ -98,7 +111,7 @@ doCreateAndAssign = do
           let pname = T.strip name
           createResult <- liftIO $ createPlugin env pname Nothing
           case createResult of
-            Left err -> stError .= Just [show err]
+            Left err -> stError .= Just [displayError err]
             Right () -> do
               errs <- liftIO $ trackFiles env fps (Just pname)
               if null errs
@@ -110,7 +123,7 @@ doCreateAndAssign = do
                   st' <- get
                   st'' <- liftIO $ syncAll st'
                   put st''
-                else stError .= Just (map show errs)
+                else stError .= Just (map displayError errs)
 
 -- | Track multiple files, collecting errors.
 trackFiles :: GitEnv -> [RelPath] -> Maybe PluginName -> IO [DotfError]

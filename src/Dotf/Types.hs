@@ -27,6 +27,7 @@ module Dotf.Types (
 
   -- * Error types
   DotfError(..),
+  displayError,
 
   -- * Lenses
   -- ** GitEnv
@@ -127,6 +128,17 @@ data DotfError
   | UnassignedFilesExist [RelPath]
   | ValidationError Text
   deriving (Show, Eq)
+
+-- | Human-readable error display (preserves newlines in Text fields).
+displayError :: DotfError -> String
+displayError (GitError code msg)        = "git error (" ++ show code ++ "): " ++ T.unpack msg
+displayError (ConfigError msg)          = "config error: " ++ T.unpack msg
+displayError (PathConflict a b p)       = "path conflict: " ++ p ++ " claimed by " ++ T.unpack a ++ " and " ++ T.unpack b
+displayError (PluginNotFound n)         = "plugin not found: " ++ T.unpack n
+displayError (ProfileNotFound n)        = "profile not found: " ++ T.unpack n
+displayError (DependencyError msg)      = "dependency error: " ++ T.unpack msg
+displayError (UnassignedFilesExist fps) = "unassigned files: " ++ unwords fps
+displayError (ValidationError msg)      = "validation error: " ++ T.unpack msg
 
 ------------
 -- Lenses --

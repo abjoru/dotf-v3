@@ -389,7 +389,9 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
 
     -- Group files by plugin
     pluginGroups = Map.mapWithKey (\_ p -> filter (matchesPlugin p) tracked) plugins
-    unassigned = filter (\f -> not (any (\p -> matchesPlugin p f) (Map.elems plugins)) && matchFilter f) tracked
+    isMeta f = take (length metaPrefix) f == metaPrefix
+      where metaPrefix = ".config/dotf/"
+    unassigned = filter (\f -> not (isMeta f) && not (any (\p -> matchesPlugin p f) (Map.elems plugins)) && matchFilter f) tracked
 
     matchesPlugin p fp =
       any (\pp -> pp `isPrefixOf'` fp || fp == pp) (_pluginPaths p)

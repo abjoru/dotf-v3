@@ -104,10 +104,10 @@ gitBareSilent env args = do
 -- File listing --
 ------------------
 
--- | List all tracked files.
+-- | List all tracked files (index-based so track/untrack reflect immediately).
 gitTracked :: GitEnv -> IO (Either DotfError [FilePath])
 gitTracked env = do
-  cfg <- gitBare env ["ls-tree", "--name-only", "-r", "HEAD"]
+  cfg <- gitBare env ["ls-files"]
   processFileListResult <$> PT.readProcess cfg
 
 -- | List staged files.
@@ -134,7 +134,7 @@ gitUntracked env = do
 
 -- | Add a file to the index.
 gitAdd :: GitEnv -> FilePath -> IO (Either DotfError ())
-gitAdd env fp = runGit env ["add", fp]
+gitAdd env fp = runGit env ["add", "-f", fp]
 
 -- | Remove a file from the index (keep on disk).
 gitRmCached :: GitEnv -> FilePath -> IO (Either DotfError ())

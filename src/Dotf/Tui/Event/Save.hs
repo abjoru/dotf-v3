@@ -11,6 +11,7 @@ import qualified Data.Vector            as V
 import           Dotf.Git               (gitCommit, gitPush, gitStage,
                                          gitUnstage)
 import           Dotf.Tui.Types
+import           Dotf.Types             (displayError)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
@@ -99,7 +100,7 @@ doCommitAndPush = do
           Left err -> pure $ Left err
           Right () -> gitPush env
       case result of
-        Left err -> stError .= Just [show err]
+        Left err -> stError .= Just [displayError err]
         Right () -> do
           stPopup .= Nothing
           stFocus .= FTracked

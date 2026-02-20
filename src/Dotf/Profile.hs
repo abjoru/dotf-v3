@@ -24,9 +24,11 @@ import           Dotf.Types
 -- Returns (assigned, unassigned).
 checkCoverage :: [RelPath] -> Map.Map PluginName Plugin -> ([RelPath], [RelPath])
 checkCoverage files plugins =
-  let allPluginPaths = concatMap _pluginPaths (Map.elems plugins)
+  let metaPrefix = ".config/dotf/"
+      userFiles = filter (not . (metaPrefix `isPrefixOf'`)) files
+      allPluginPaths = concatMap _pluginPaths (Map.elems plugins)
       isAssigned f = any (\pp -> pp `isPrefixOf'` f || f == pp) allPluginPaths
-      (assigned, unassigned) = foldr classify ([], []) files
+      (assigned, unassigned) = foldr classify ([], []) userFiles
       classify f (as, us)
         | isAssigned f = (f:as, us)
         | otherwise    = (as, f:us)
@@ -60,12 +62,9 @@ profileCoverage env pcfg = do
   case tracked of
     Left err -> pure $ Left err
     Right files -> do
-      let metaPrefix = ".config/dotf/"
-          userFiles = filter (not . (metaPrefix `isPrefixOf'`)) files
-          (assigned, unassigned) = checkCoverage userFiles (_pcPlugins pcfg)
-      pure $ Right (length assigned, length userFiles, unassigned)
-  where
-    isPrefixOf' prefix path = take (length prefix) path == prefix
+      let (assigned, unassigned) = checkCoverage files (_pcPlugins pcfg)
+          total = length assigned + length unassigned
+      pure $ Right (length assigned, total, unassigned)
 
 -- | Create a new profile.
 createProfile :: GitEnv -> ProfileName -> [PluginName] -> IO (Either DotfError ())

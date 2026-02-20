@@ -62,7 +62,7 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'a') [])) = do
       let env = st ^. stEnv
       result <- liftIO $ activateProfile env (_profileName p)
       case result of
-        Left err -> stError .= Just [show err]
+        Left err -> stError .= Just [displayError err]
         Right () -> do
           st' <- liftIO $ syncAll st
           put st'

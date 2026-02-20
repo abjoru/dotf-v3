@@ -79,7 +79,7 @@ tabContent st = case st ^. stTab of
 -- | Error dialog.
 errorDialog :: [String] -> Widget RName
 errorDialog msgs = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " Error ") $
-  padAll 1 $ vBox $ map str msgs
+  padAll 1 $ vBox $ map str (concatMap lines msgs)
 
 -- | Confirm dialog.
 confirmDialog :: String -> Widget RName

@@ -1,5 +1,6 @@
 module ProfileSpec (spec) where
 
+import           Data.List           (isPrefixOf)
 import qualified Data.Map.Strict     as Map
 import           Dotf.Profile
 import           Dotf.Types
@@ -19,14 +20,22 @@ spec = do
             [ ("shell", Plugin "shell" Nothing [".zshrc", ".zprofile"] [] Nothing)
             , ("nvim",  Plugin "nvim"  Nothing [".config/nvim/"]       [] Nothing)
             ]
+          metaPrefix = ".config/dotf/"
+          userFiles = filter (not . (metaPrefix `isPrefixOf`)) files
           (assigned, unassigned) = checkCoverage files plugins
-      length assigned + length unassigned === length files
+      length assigned + length unassigned === length userFiles
 
     it "empty plugin map -> all unassigned" $ do
       let files = [".zshrc", ".gitconfig", ".config/nvim/init.lua"]
           (assigned, unassigned) = checkCoverage files Map.empty
       assigned `shouldBe` []
       unassigned `shouldBe` files
+
+    it "excludes .config/dotf/ metadata from coverage" $ do
+      let files = [".zshrc", ".config/dotf/plugins.yaml", ".config/dotf/profiles.yaml"]
+          (assigned, unassigned) = checkCoverage files Map.empty
+      assigned `shouldBe` []
+      unassigned `shouldBe` [".zshrc"]
 
   describe "listProfiles" $ do
     it "marks active profile correctly" $ do
