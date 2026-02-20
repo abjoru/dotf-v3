@@ -28,7 +28,7 @@ drawPluginsTab st =
 
     detailPane = borderWithLabel
       (titleWidget " Details " dFocus)
-      (renderDetail st)
+      (viewport RPluginDetail Vertical (renderDetail st) <+> fill ' ')
 
 -- | Render a plugin list item.
 renderPluginItem :: Bool -> (Plugin, Bool) -> Widget RName

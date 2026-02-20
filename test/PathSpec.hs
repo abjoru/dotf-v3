@@ -65,3 +65,42 @@ spec = do
 
     it "empty plugin map returns Nothing" $
       findMatchingPlugin ".zshrc" Map.empty `shouldBe` Nothing
+
+  describe "consolidatePaths" $ do
+    it "empty list adds path" $
+      consolidatePaths [] ".config/nvim/init.lua"
+        `shouldBe` [".config/nvim/init.lua"]
+
+    it "already covered by parent" $
+      consolidatePaths [".config/nvim"] ".config/nvim/init.lua"
+        `shouldBe` [".config/nvim"]
+
+    it "exact duplicate" $
+      consolidatePaths [".zshrc"] ".zshrc"
+        `shouldBe` [".zshrc"]
+
+    it "no shared prefix keeps both" $
+      consolidatePaths [".zshrc"] ".config/kitty/kitty.conf"
+        `shouldBe` [".zshrc", ".config/kitty/kitty.conf"]
+
+    it "shallow prefix rejected" $
+      consolidatePaths [".bashrc"] ".bash_profile"
+        `shouldBe` [".bashrc", ".bash_profile"]
+
+    it "two-file collapse" $
+      consolidatePaths [".config/nvim/init.lua"] ".config/nvim/lua/plugins.lua"
+        `shouldBe` [".config/nvim"]
+
+    it "multi-subsume collapse" $
+      consolidatePaths [".config/nvim/init.lua", ".config/nvim/lua/p.lua"] ".config/nvim/after/ft.vim"
+        `shouldBe` [".config/nvim"]
+
+    it "cross-app no collapse" $
+      consolidatePaths [".config/nvim/init.lua"] ".config/kitty/kitty.conf"
+        `shouldBe` [".config/nvim/init.lua", ".config/kitty/kitty.conf"]
+
+    it "incremental 3-step" $
+      let step1 = consolidatePaths [] ".config/nvim/init.lua"
+          step2 = consolidatePaths step1 ".config/nvim/lua/plugins.lua"
+          step3 = consolidatePaths step2 ".config/nvim/after/ft.vim"
+      in step3 `shouldBe` [".config/nvim"]

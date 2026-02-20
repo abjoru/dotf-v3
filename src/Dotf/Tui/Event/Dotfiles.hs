@@ -6,10 +6,11 @@ import           Brick                  (BrickEvent (..), suspendAndResume)
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
+import qualified Data.Map.Strict        as Map
 import qualified Data.Set               as Set
 import           Dotf.Git               (gitDiffFile)
 import           Dotf.Tui.Types
-import           Dotf.Types             (GitEnv (..))
+import           Dotf.Types
 import           Dotf.Utils             (editFile)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
@@ -17,18 +18,11 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Dotfiles tab.
 handleDotfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation (vi-enabled via handleListEventVi)
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))          = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))            = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KHome []))          = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KEnd []))           = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') []))   = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') []))   = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') []))   = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') []))   = handleListNav ev
+-- Space: multi-select toggle
+handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = toggleSelect
 
--- Space: toggle collapse on headers
-handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = toggleCollapse
+-- Enter: collapse toggle on headers
+handleDotfilesEvent (VtyEvent (V.EvKey V.KEnter [])) = toggleCollapse
 
 -- e: edit selected file
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = editSelected
@@ -43,14 +37,17 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'u') [])) = do
     Nothing -> pure ()
     Just fp -> stConfirm .= Just ("Untrack " ++ fp ++ "?", ConfirmUntrack fp)
 
--- a: assign trigger
+-- a: assign trigger (batch if selected, else cursor)
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'a') [])) = do
-  mPath <- getSelectedPath
-  case mPath of
-    Nothing -> pure ()
-    Just fp -> do
-      st <- get
-      put $ openAssignPopup fp st
+  st <- get
+  let sel = st ^. stSelected
+  if not (Set.null sel)
+    then put $ openAssignPopup (Set.toList sel) st
+    else do
+      mPath <- getSelectedPath
+      case mPath of
+        Nothing -> pure ()
+        Just fp -> put $ openAssignPopup [fp] st
 
 -- s: save trigger
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 's') [])) = do
@@ -75,6 +72,8 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'F') [])) = do
   st' <- liftIO $ syncDotfiles st
   put st'
 
+-- Fallback: delegate to list vi navigation
+handleDotfilesEvent (VtyEvent ev) = handleListNav ev
 handleDotfilesEvent _ = pure ()
 
 -- | Navigate list based on current focus (vi keys enabled).
@@ -86,7 +85,7 @@ handleListNav ev = do
     FUntracked -> zoom stUntrackedList $ L.handleListEventVi L.handleListEvent ev
     _          -> pure ()
 
--- | Toggle collapse on plugin header.
+-- | Toggle collapse on plugin header (Enter key).
 toggleCollapse :: EventM RName State ()
 toggleCollapse = do
   f <- use stFocus
@@ -104,6 +103,75 @@ toggleCollapse = do
           put $ rebuildGroupedList st
         _ -> pure ()
     _ -> pure ()
+
+-- | Toggle multi-select on files (Space key).
+toggleSelect :: EventM RName State ()
+toggleSelect = do
+  f <- use stFocus
+  case f of
+    FTracked -> do
+      tl <- use stTrackedList
+      case L.listSelectedElement tl of
+        Just (_, item) -> do
+          case itemPath item of
+            Just fp -> do
+              selected <- use stSelected
+              let selected' = if Set.member fp selected
+                              then Set.delete fp selected
+                              else Set.insert fp selected
+              stSelected .= selected'
+              -- Advance cursor
+              zoom stTrackedList $ L.handleListEvent (V.EvKey V.KDown [])
+            Nothing -> toggleGroupSelect item
+        _ -> pure ()
+    _ -> pure ()
+
+-- | Toggle all files in a plugin group.
+toggleGroupSelect :: GroupItem -> EventM RName State ()
+toggleGroupSelect (GHeader pname _) = do
+  st <- get
+  let plugins  = _pcPlugins (st ^. stPluginConfig)
+      tracked  = st ^. stAllTracked
+      selected = st ^. stSelected
+  case Map.lookup pname plugins of
+    Nothing -> pure ()
+    Just p  -> do
+      let groupFiles = filter (matchesPlugin p) tracked
+          allSelected = all (`Set.member` selected) groupFiles && not (null groupFiles)
+          selected' = if allSelected
+                      then foldr Set.delete selected groupFiles
+                      else foldr Set.insert selected groupFiles
+      stSelected .= selected'
+toggleGroupSelect GUnassignedHeader = do
+  st <- get
+  let plugins  = _pcPlugins (st ^. stPluginConfig)
+      tracked  = st ^. stAllTracked
+      selected = st ^. stSelected
+      unassigned = filter (\fp -> not (any (\p -> matchesPlugin p fp) (Map.elems plugins))) tracked
+      allSelected = all (`Set.member` selected) unassigned && not (null unassigned)
+      selected' = if allSelected
+                  then foldr Set.delete selected unassigned
+                  else foldr Set.insert selected unassigned
+  stSelected .= selected'
+toggleGroupSelect _ = pure ()
+
+-- | Check if a file belongs to a plugin.
+matchesPlugin :: Plugin -> RelPath -> Bool
+matchesPlugin p fp =
+  any (\pp -> isPrefixOf' pp fp || fp == pp) (_pluginPaths p)
+  where
+    isPrefixOf' prefix path =
+      let prefix' = if null prefix || last prefix == '/' then prefix
+                    else prefix ++ "/"
+      in take (length prefix') path == prefix'
+
+-- | Extract file path from a GroupItem, if it's a file item.
+itemPath :: GroupItem -> Maybe RelPath
+itemPath (GStaged fp _)       = Just fp
+itemPath (GUnstaged fp _ _)   = Just fp
+itemPath (GTracked fp _)      = Just fp
+itemPath (GUnassignedFile fp) = Just fp
+itemPath _                    = Nothing
 
 -- | Edit selected file with $EDITOR.
 editSelected :: EventM RName State ()

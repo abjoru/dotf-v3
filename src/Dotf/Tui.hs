@@ -116,7 +116,10 @@ renderSaveItem sel item =
 drawAssignPopup :: State -> Widget RName
 drawAssignPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " Assign ") $
   hLimit 50 $ vLimit 15 $ padAll 1 $ vBox $
-    [ withAttr attrBold $ str $ "File: " ++ maybe "?" id (st ^. stAssignFile)
+    [ withAttr attrBold $ str $ case st ^. stAssignFiles of
+        []  -> "File: ?"
+        [f] -> "File: " ++ f
+        fs  -> show (length fs) ++ " files selected"
     , str ""
     , withAttr attrBold $ str "Select plugin:"
     , vLimit 8 $ L.renderList renderAssignItem (st ^. stFocus == FAssignList) (st ^. stAssignList)

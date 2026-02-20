@@ -17,7 +17,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path       (isSubpathOf, normalizePath)
+import           Dotf.Path       (consolidatePaths, isSubpathOf, normalizePath)
 import           Dotf.State
 import           Dotf.Types
 import           Dotf.Utils      (appendToFile, gitIgnoreFile)
@@ -69,7 +69,7 @@ trackFile env path mPlugin = do
               case Map.lookup plugName (_pcPlugins cfg) of
                 Nothing -> pure $ Left $ PluginNotFound plugName
                 Just plugin -> do
-                  let updatedPlugin = plugin { _pluginPaths = _pluginPaths plugin ++ [relPath] }
+                  let updatedPlugin = plugin { _pluginPaths = consolidatePaths (_pluginPaths plugin) relPath }
                       newCfg = cfg { _pcPlugins = Map.insert plugName updatedPlugin (_pcPlugins cfg) }
                   savePluginConfig env newCfg
                   pure $ Right ()

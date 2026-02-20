@@ -36,11 +36,11 @@ module Dotf.Tui.Types (
   -- * Lenses
   stEnv, stPluginConfig, stProfileConfig, stLocalState, stAllTracked,
   stTab, stFocus, stPopup,
-  stTrackedList, stUntrackedList, stCollapsed,
+  stTrackedList, stUntrackedList, stCollapsed, stSelected,
   stPluginListW, stPluginFiles,
   stProfileListW,
   stSaveItems, stCommitEditor,
-  stAssignFile, stAssignList, stAssignEditing, stAssignEditor,
+  stAssignFiles, stAssignList, stAssignEditing, stAssignEditor,
   stIgnoreEditor,
   stFilterEditor, stFilterActive,
   stConfirm,
@@ -106,6 +106,8 @@ data RName
   | RAssignEditor
   | RIgnoreEditor
   | RFilterEditor
+  | RPluginDetail
+  | RProfileDetail
   deriving (Eq, Show, Ord)
 
 -- | Grouped item in tracked list: headers or file entries.
@@ -166,6 +168,7 @@ data State = State
   , _stTrackedList   :: L.List RName GroupItem
   , _stUntrackedList :: L.List RName UntrackedItem
   , _stCollapsed     :: Set PluginName
+  , _stSelected      :: Set RelPath
 
   -- Plugins tab
   , _stPluginListW   :: L.List RName (Plugin, Bool)
@@ -179,7 +182,7 @@ data State = State
   , _stCommitEditor  :: E.Editor String RName
 
   -- Assign popup
-  , _stAssignFile    :: Maybe RelPath
+  , _stAssignFiles   :: [RelPath]
   , _stAssignList    :: L.List RName (PluginName, Bool)
   , _stAssignEditing :: Bool
   , _stAssignEditor  :: E.Editor String RName
@@ -238,7 +241,7 @@ buildState env = do
   unstagedStatuses <- mapM (checkStatus env) unstaged
 
   let plugins     = _pcPlugins pcfg
-      collapsed   = Set.empty
+      collapsed   = Set.fromList (Map.keys plugins)
       groupedList = buildGroupedList plugins tracked stagedStatuses unstagedStatuses collapsed Nothing
       untrkList   = buildUntrackedList plugins (_wlPaths $ _pcWatchlist pcfg) untrk
 
@@ -264,12 +267,13 @@ buildState env = do
     , _stTrackedList   = L.list RTrackedList (V.fromList groupedList) 1
     , _stUntrackedList = L.list RUntrackedList (V.fromList untrkList) 1
     , _stCollapsed     = collapsed
+    , _stSelected      = Set.empty
     , _stPluginListW   = L.list RPluginList (V.fromList plugList) 1
     , _stPluginFiles   = fileCache
     , _stProfileListW  = L.list RProfileList (V.fromList profList) 1
     , _stSaveItems     = L.list RSaveList V.empty 1
     , _stCommitEditor  = E.editor RCommitEditor Nothing ""
-    , _stAssignFile    = Nothing
+    , _stAssignFiles   = []
     , _stAssignList    = L.list RAssignList V.empty 1
     , _stAssignEditing = False
     , _stAssignEditor  = E.editor RAssignEditor (Just 1) ""
@@ -294,6 +298,7 @@ syncAll st = do
     & stFocus     .~ (st ^. stFocus)
     & stPopup     .~ (st ^. stPopup)
     & stCollapsed .~ (st ^. stCollapsed)
+    & stSelected  .~ (st ^. stSelected)
 
 -- | Sync dotfiles tab data.
 syncDotfiles :: State -> IO State
@@ -465,13 +470,13 @@ openSavePopup st = do
     & stPopup        .~ Just SavePopup
     & stFocus        .~ FSaveList
 
--- | Open assign popup for the given file.
-openAssignPopup :: RelPath -> State -> State
-openAssignPopup fp st =
+-- | Open assign popup for the given file(s).
+openAssignPopup :: [RelPath] -> State -> State
+openAssignPopup fps st =
   let plugins = Map.toAscList $ _pcPlugins (st ^. stPluginConfig)
       items = map (\(n, _) -> (n, False)) plugins
   in st
-    & stAssignFile    .~ Just fp
+    & stAssignFiles   .~ fps
     & stAssignList    .~ L.list RAssignList (V.fromList items) 1
     & stAssignEditing .~ False
     & stAssignEditor  .~ E.editor RAssignEditor (Just 1) ""

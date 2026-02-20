@@ -27,7 +27,7 @@ drawProfilesTab st =
 
     detailPane = borderWithLabel
       (titleWidget " Details " dFocus)
-      (renderDetail st)
+      (viewport RProfileDetail Vertical (renderDetail st) <+> fill ' ')
 
 -- | Render a profile list item.
 renderProfileItem :: Bool -> (Profile, Bool) -> Widget RName

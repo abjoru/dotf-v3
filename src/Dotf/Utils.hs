@@ -28,7 +28,7 @@ import           System.Directory        (doesFileExist)
 import           System.FilePath         ((</>))
 import           System.IO               (IOMode (WriteMode), hFlush, stdout,
                                           withFile)
-import           System.Process          (readProcess)
+import           System.Process          (callProcess, readProcess)
 
 -----------------------
 -- Git path builders --
@@ -86,8 +86,7 @@ stateFile env = stateDir env </> "state.yaml"
 editFile :: FilePath -> IO ()
 editFile file = do
   editor <- lookupEditor
-  _ <- readProcess editor [file] ""
-  pure ()
+  callProcess editor [file]
   where
     lookupEditor = pure "nvim" -- TODO: respect $EDITOR
 

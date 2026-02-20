@@ -2,7 +2,8 @@ module Dotf.Tui.Event.Profiles (
   handleProfilesEvent,
 ) where
 
-import           Brick                  (BrickEvent (..), suspendAndResume)
+import           Brick                  (BrickEvent (..), suspendAndResume,
+                                         vScrollBy, viewportScroll)
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
@@ -17,14 +18,6 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Profiles tab.
 handleProfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation (vi-enabled)
-handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') [])) = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') [])) = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') [])) = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') [])) = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))        = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))          = navList ev
-
 -- n: new profile
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
   st <- get
@@ -84,15 +77,23 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'x') [])) = do
       then stConfirm .= Just ("Deactivate current profile?", ConfirmDeactivateProfile)
       else pure ()
 
+-- Fallback: delegate to list vi navigation
+handleProfilesEvent (VtyEvent ev) = navList ev
 handleProfilesEvent _ = pure ()
 
--- | Navigate profile list (vi keys enabled).
+-- | Navigate profile list or scroll detail (vi keys enabled).
 navList :: V.Event -> EventM RName State ()
 navList ev = do
   f <- use stFocus
   case f of
-    FProfileList -> zoom stProfileListW $ L.handleListEventVi L.handleListEvent ev
-    _            -> pure ()
+    FProfileList   -> zoom stProfileListW $ L.handleListEventVi L.handleListEvent ev
+    FProfileDetail -> case ev of
+      V.EvKey (V.KChar 'j') [] -> vScrollBy (viewportScroll RProfileDetail) 1
+      V.EvKey V.KDown []       -> vScrollBy (viewportScroll RProfileDetail) 1
+      V.EvKey (V.KChar 'k') [] -> vScrollBy (viewportScroll RProfileDetail) (-1)
+      V.EvKey V.KUp []         -> vScrollBy (viewportScroll RProfileDetail) (-1)
+      _                        -> pure ()
+    _              -> pure ()
 
 -- | Get currently selected profile.
 getSelectedProfile :: EventM RName State (Maybe (Profile, Bool))

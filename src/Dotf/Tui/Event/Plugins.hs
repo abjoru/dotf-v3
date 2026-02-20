@@ -2,7 +2,8 @@ module Dotf.Tui.Event.Plugins (
   handlePluginsEvent,
 ) where
 
-import           Brick                  (BrickEvent (..), suspendAndResume)
+import           Brick                  (BrickEvent (..), suspendAndResume,
+                                         vScrollBy, viewportScroll)
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
@@ -17,14 +18,6 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Plugins tab.
 handlePluginsEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation (vi-enabled)
-handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') [])) = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') [])) = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') [])) = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') [])) = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey V.KDown []))        = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey V.KUp []))          = navList ev
-
 -- n: new plugin (external editor)
 handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
   st <- get
@@ -82,15 +75,23 @@ handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
     Just (p, _) ->
       stConfirm .= Just ("Remove plugin " ++ T.unpack (_pluginName p) ++ "?", ConfirmRemovePlugin (_pluginName p))
 
+-- Fallback: delegate to list vi navigation
+handlePluginsEvent (VtyEvent ev) = navList ev
 handlePluginsEvent _ = pure ()
 
--- | Navigate plugin list (vi keys enabled).
+-- | Navigate plugin list or scroll detail (vi keys enabled).
 navList :: V.Event -> EventM RName State ()
 navList ev = do
   f <- use stFocus
   case f of
-    FPluginList -> zoom stPluginListW $ L.handleListEventVi L.handleListEvent ev
-    _           -> pure ()
+    FPluginList   -> zoom stPluginListW $ L.handleListEventVi L.handleListEvent ev
+    FPluginDetail -> case ev of
+      V.EvKey (V.KChar 'j') [] -> vScrollBy (viewportScroll RPluginDetail) 1
+      V.EvKey V.KDown []       -> vScrollBy (viewportScroll RPluginDetail) 1
+      V.EvKey (V.KChar 'k') [] -> vScrollBy (viewportScroll RPluginDetail) (-1)
+      V.EvKey V.KUp []         -> vScrollBy (viewportScroll RPluginDetail) (-1)
+      _                        -> pure ()
+    _             -> pure ()
 
 -- | Get currently selected plugin.
 getSelectedPlugin :: EventM RName State (Maybe (Plugin, Bool))

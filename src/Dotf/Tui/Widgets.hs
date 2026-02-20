@@ -60,8 +60,8 @@ helpBar st =
     where
       dotfilesHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus")
-        , ("f/F", "Filter/Clear"), ("Space", "Collapse")
-        , ("q", "Quit")
+        , ("f/F", "Filter/Clear"), ("Space", "Select")
+        , ("Ret", "Collapse"), ("q", "Quit")
         ]
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
