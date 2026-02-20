@@ -1,6 +1,6 @@
 name:                dotf
 version:             3.0.0.0
-github:              "abjoru/dotf"
+github:              "abjoru/dotf-v3"
 license:             BSD-3-Clause
 author:              "Andreas Bjoru"
 maintainer:          "andreas.bjoru@gmail.com"
