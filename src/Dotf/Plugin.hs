@@ -15,10 +15,12 @@ module Dotf.Plugin (
 ) where
 
 import qualified Data.Map.Strict as Map
+import qualified Data.Set        as Set
 import           Data.Text       (Text)
 import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
+import           Dotf.Path       (isSubpathOf)
 import           Dotf.State
 import           Dotf.Types
 
@@ -28,21 +30,25 @@ import           Dotf.Types
 
 -- | Topological sort of plugin dependencies.
 -- Returns all plugins needed (including transitive deps) in install order.
+-- Uses Set for O(log n) membership checks on visited/resolved accumulators.
 resolveDependencies :: Map.Map PluginName Plugin
                     -> [PluginName]
                     -> Either DotfError [PluginName]
-resolveDependencies plugins targets = go [] [] targets
+resolveDependencies plugins targets = fmap reverse $ go Set.empty Set.empty [] targets
   where
-    go _       resolved []     = Right (reverse resolved)
-    go visited resolved (x:xs)
-      | x `elem` resolved = go visited resolved xs
-      | x `elem` visited  = Left $ DependencyError $
+    -- resolvedSet: O(log n) membership; resolvedList: ordered (reversed) output
+    go _          _           resolvedList []     = Right resolvedList
+    go visitedSet resolvedSet resolvedList (x:xs)
+      | Set.member x resolvedSet = go visitedSet resolvedSet resolvedList xs
+      | Set.member x visitedSet  = Left $ DependencyError $
           T.concat ["Circular dependency detected involving: ", x]
       | otherwise = case Map.lookup x plugins of
           Nothing -> Left $ PluginNotFound x
           Just p  -> do
-            deps <- go (x:visited) resolved (_pluginDepends p)
-            go visited (x : deps) xs
+            -- Process deps with x marked as visited (cycle guard)
+            depsResolved <- go (Set.insert x visitedSet) resolvedSet resolvedList (_pluginDepends p)
+            -- Now process remaining targets with x and its deps added to resolved
+            go visitedSet (Set.insert x resolvedSet) (x : depsResolved) xs
 
 -- | Check if removing plugins is safe (no installed dependents remain).
 checkRemoveSafety :: Map.Map PluginName Plugin
@@ -50,12 +56,13 @@ checkRemoveSafety :: Map.Map PluginName Plugin
                   -> [PluginName]  -- ^ To remove
                   -> Either DotfError ()
 checkRemoveSafety plugins installed toRemove =
-  let remaining = filter (`notElem` toRemove) installed
+  let removeSet  = Set.fromList toRemove
+      remaining  = filter (`Set.notMember` removeSet) installed
       dependents = [ (dep, name)
                    | name <- remaining
                    , Just p <- [Map.lookup name plugins]
                    , dep <- _pluginDepends p
-                   , dep `elem` toRemove
+                   , dep `Set.member` removeSet
                    ]
   in case dependents of
     [] -> Right ()
@@ -63,16 +70,19 @@ checkRemoveSafety plugins installed toRemove =
       T.concat ["Cannot remove ", dep, ": required by installed plugin ", name]
 
 -- | Validate no path appears in multiple plugins.
+-- Uses a Map accumulator for O(n log n) duplicate detection.
 validatePaths :: Map.Map PluginName Plugin -> Either DotfError ()
 validatePaths = checkDuplicates . concatMap expandPlugin . Map.toList
   where
     expandPlugin (name, plugin) = map (\p -> (name, p)) (_pluginPaths plugin)
 
-    checkDuplicates [] = Right ()
-    checkDuplicates ((name, path):rest) =
-      case lookup path (map (\(n, p) -> (p, n)) rest) of
-        Just other -> Left $ PathConflict name other path
-        Nothing    -> checkDuplicates rest
+    checkDuplicates pairs = go Map.empty pairs
+      where
+        go _ [] = Right ()
+        go seen ((name, path):rest) =
+          case Map.lookup path seen of
+            Just other -> Left $ PathConflict name other path
+            Nothing    -> go (Map.insert path name seen) rest
 
 --------------------
 -- IO functions   --
@@ -81,9 +91,10 @@ validatePaths = checkDuplicates . concatMap expandPlugin . Map.toList
 -- | List all plugins with their install status.
 listPlugins :: PluginConfig -> LocalState -> [(Plugin, Bool)]
 listPlugins cfg st =
-  [ (p, _pluginName p `elem` _lsInstalledPlugins st)
-  | p <- Map.elems (_pcPlugins cfg)
-  ]
+  let installed = Set.fromList (_lsInstalledPlugins st)
+  in [ (p, _pluginName p `Set.member` installed)
+     | p <- Map.elems (_pcPlugins cfg)
+     ]
 
 -- | Get detailed info about a plugin.
 pluginInfo :: GitEnv -> PluginName -> PluginConfig -> LocalState
@@ -92,7 +103,7 @@ pluginInfo env name cfg st =
   case Map.lookup name (_pcPlugins cfg) of
     Nothing -> pure $ Left $ PluginNotFound name
     Just p  -> do
-      let installed = name `elem` _lsInstalledPlugins st
+      let installed = name `Set.member` Set.fromList (_lsInstalledPlugins st)
       files <- pluginFiles env p
       case files of
         Left err -> pure $ Left err
@@ -147,21 +158,23 @@ installPlugins env names = do
   case cfgResult of
     Left err -> pure $ Left err
     Right cfg -> do
-      st <- loadLocalState env
-      case resolveDependencies (_pcPlugins cfg) names of
+      stResult <- loadLocalState env
+      case stResult of
         Left err -> pure $ Left err
-        Right resolved -> do
-          let allToInstall = filter (`notElem` _lsInstalledPlugins st) resolved
-              allInstalled = _lsInstalledPlugins st ++ allToInstall
-              allPaths = concatMap (pluginPathsFor cfg) allInstalled
-              sparseTargets = ".config/dotf/" : allPaths
-          result <- gitSparseCheckoutSet env sparseTargets
-          case result of
-            Left err -> pure $ Left err
-            Right () -> do
-              let newSt = st { _lsInstalledPlugins = allInstalled }
-              saveLocalState env newSt
-              pure $ Right ()
+        Right st -> case resolveDependencies (_pcPlugins cfg) names of
+          Left err -> pure $ Left err
+          Right resolved -> do
+            let allToInstall = filter (`notElem` _lsInstalledPlugins st) resolved
+                allInstalled = _lsInstalledPlugins st ++ allToInstall
+                allPaths = concatMap (pluginPathsFor cfg) allInstalled
+                sparseTargets = ".config/dotf/" : allPaths
+            result <- gitSparseCheckoutSet env sparseTargets
+            case result of
+              Left err -> pure $ Left err
+              Right () -> do
+                let newSt = st { _lsInstalledPlugins = allInstalled }
+                saveLocalState env newSt
+                pure $ Right ()
 
 -- | Remove plugins: check safety, rebuild sparse checkout, save state.
 removePlugins :: GitEnv -> [PluginName] -> IO (Either DotfError ())
@@ -170,33 +183,29 @@ removePlugins env names = do
   case cfgResult of
     Left err -> pure $ Left err
     Right cfg -> do
-      st <- loadLocalState env
-      case checkRemoveSafety (_pcPlugins cfg) (_lsInstalledPlugins st) names of
+      stResult <- loadLocalState env
+      case stResult of
         Left err -> pure $ Left err
-        Right () -> do
-          let remaining = filter (`notElem` names) (_lsInstalledPlugins st)
-              allPaths = concatMap (pluginPathsFor cfg) remaining
-              sparseTargets = ".config/dotf/" : allPaths
-          result <- gitSparseCheckoutSet env sparseTargets
-          case result of
-            Left err -> pure $ Left err
-            Right () -> do
-              let newSt = st { _lsInstalledPlugins = remaining }
-              saveLocalState env newSt
-              pure $ Right ()
+        Right st -> case checkRemoveSafety (_pcPlugins cfg) (_lsInstalledPlugins st) names of
+          Left err -> pure $ Left err
+          Right () -> do
+            let remaining = filter (`notElem` names) (_lsInstalledPlugins st)
+                allPaths = concatMap (pluginPathsFor cfg) remaining
+                sparseTargets = ".config/dotf/" : allPaths
+            result <- gitSparseCheckoutSet env sparseTargets
+            case result of
+              Left err -> pure $ Left err
+              Right () -> do
+                let newSt = st { _lsInstalledPlugins = remaining }
+                saveLocalState env newSt
+                pure $ Right ()
 
 -----------
 -- Utils --
 -----------
 
 matchesPlugin :: Plugin -> FilePath -> Bool
-matchesPlugin plugin fp =
-  any (\pp -> pp `isPrefixOf'` fp || fp == pp) (_pluginPaths plugin)
-  where
-    isPrefixOf' prefix path =
-      let prefix' = if null prefix || last prefix == '/' then prefix
-                    else prefix ++ "/"
-      in take (length prefix') path == prefix'
+matchesPlugin plugin fp = any (`isSubpathOf` fp) (_pluginPaths plugin)
 
 pluginPathsFor :: PluginConfig -> PluginName -> [FilePath]
 pluginPathsFor cfg name =

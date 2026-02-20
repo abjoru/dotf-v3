@@ -32,6 +32,7 @@ module Dotf.Tui.Types (
   openSavePopup,
   openAssignPopup,
   openIgnorePopup,
+  pathSegments,
 
   -- * Lenses
   stEnv, stPluginConfig, stProfileConfig, stLocalState, stAllTracked,
@@ -41,7 +42,7 @@ module Dotf.Tui.Types (
   stProfileListW,
   stSaveItems, stCommitEditor,
   stAssignFiles, stAssignList, stAssignEditing, stAssignEditor,
-  stIgnoreEditor,
+  stIgnoreList,
   stFilterEditor, stFilterActive,
   stConfirm,
   stAhead, stBehind, stAssignedCount, stTotalCount,
@@ -52,6 +53,7 @@ module Dotf.Tui.Types (
 import qualified Brick.Widgets.Edit as E
 import qualified Brick.Widgets.List as L
 import qualified Data.Map.Strict    as Map
+import           Data.Maybe         (fromMaybe)
 import           Data.Set           (Set)
 import qualified Data.Set           as Set
 import           Data.Text          (Text)
@@ -59,6 +61,7 @@ import qualified Data.Text          as T
 import qualified Data.Vector        as V
 import           Dotf.Config
 import           Dotf.Git
+import           Dotf.Path          (isSubpathOf)
 import           Dotf.Plugin        (listPlugins)
 import           Dotf.Profile       (checkCoverage, listProfiles)
 import           Dotf.State
@@ -87,7 +90,7 @@ data Focus
   | FSaveEditor
   | FAssignList
   | FAssignEditor
-  | FIgnoreEditor
+  | FIgnoreList
   | FFilterEditor
   deriving (Eq, Show, Ord)
 
@@ -104,7 +107,7 @@ data RName
   | RAssignList
   | RCommitEditor
   | RAssignEditor
-  | RIgnoreEditor
+  | RIgnoreList
   | RFilterEditor
   | RPluginDetail
   | RProfileDetail
@@ -188,7 +191,7 @@ data State = State
   , _stAssignEditor  :: E.Editor String RName
 
   -- Ignore popup
-  , _stIgnoreEditor  :: E.Editor String RName
+  , _stIgnoreList    :: L.List RName FilePath
 
   -- Filter
   , _stFilterEditor  :: E.Editor String RName
@@ -219,11 +222,16 @@ buildState :: GitEnv -> IO State
 buildState env = do
   pcfgE  <- loadPluginConfig env
   prfE   <- loadProfileConfig env
-  ls     <- loadLocalState env
+  lsE    <- loadLocalState env
   (ah, bh) <- gitAheadBehind env
 
   let pcfg = either (const defaultPluginConfig) id pcfgE
       prf  = either (const defaultProfileConfig) id prfE
+      ls   = either (const defaultLocalState) id lsE
+      cfgErrors = either (\e -> [displayError e]) (const []) pcfgE
+               ++ either (\e -> [displayError e]) (const []) prfE
+               ++ either (\e -> [displayError e]) (const []) lsE
+      initError = if null cfgErrors then Nothing else Just cfgErrors
 
   -- Tracked files
   trackedE  <- gitTracked env
@@ -245,9 +253,9 @@ buildState env = do
       groupedList = buildGroupedList plugins tracked stagedStatuses unstagedStatuses collapsed Nothing
       untrkList   = buildUntrackedList plugins (_wlPaths $ _pcWatchlist pcfg) untrk
 
-  -- Plugin files cache
-  let plugList    = listPlugins pcfg ls
-  fileCache <- buildFileCache env plugins
+  -- Plugin files cache (reuse already-fetched tracked files)
+  let plugList  = listPlugins pcfg ls
+      fileCache = buildFileCache tracked plugins
 
   -- Profiles
   let profList = listProfiles prf ls
@@ -277,7 +285,7 @@ buildState env = do
     , _stAssignList    = L.list RAssignList V.empty 1
     , _stAssignEditing = False
     , _stAssignEditor  = E.editor RAssignEditor (Just 1) ""
-    , _stIgnoreEditor  = E.editor RIgnoreEditor (Just 1) ""
+    , _stIgnoreList    = L.list RIgnoreList V.empty 1
     , _stFilterEditor  = E.editor RFilterEditor (Just 1) ""
     , _stFilterActive  = False
     , _stConfirm       = Nothing
@@ -285,7 +293,7 @@ buildState env = do
     , _stBehind        = bh
     , _stAssignedCount = length assigned
     , _stTotalCount    = length tracked
-    , _stError         = Nothing
+    , _stError         = initError
     }
 
 -- | Full sync after mutations.
@@ -343,28 +351,40 @@ syncPlugins :: State -> IO State
 syncPlugins st = do
   let env = st ^. stEnv
   pcfgE <- loadPluginConfig env
-  ls    <- loadLocalState env
-  let pcfg = either (const defaultPluginConfig) id pcfgE
+  lsE   <- loadLocalState env
+  let pcfg    = either (const defaultPluginConfig) id pcfgE
+      ls      = either (const (st ^. stLocalState)) id lsE
       plugList = listPlugins pcfg ls
-  fileCache <- buildFileCache env (_pcPlugins pcfg)
+      errs    = either (\e -> [displayError e]) (const []) pcfgE
+             ++ either (\e -> [displayError e]) (const []) lsE
+      mErr    = if null errs then Nothing else Just errs
+  trackedE2 <- gitTracked env
+  let tracked2  = either (const []) id trackedE2
+      fileCache = buildFileCache tracked2 (_pcPlugins pcfg)
   pure $ st
     & stPluginConfig .~ pcfg
     & stLocalState   .~ ls
     & stPluginListW  .~ L.list RPluginList (V.fromList plugList) 1
     & stPluginFiles  .~ fileCache
+    & stError        .~ mErr
 
 -- | Sync profiles tab data.
 syncProfiles :: State -> IO State
 syncProfiles st = do
   let env = st ^. stEnv
   prfE <- loadProfileConfig env
-  ls   <- loadLocalState env
-  let prf     = either (const defaultProfileConfig) id prfE
+  lsE  <- loadLocalState env
+  let prf      = either (const defaultProfileConfig) id prfE
+      ls       = either (const (st ^. stLocalState)) id lsE
       profList = listProfiles prf ls
+      errs     = either (\e -> [displayError e]) (const []) prfE
+              ++ either (\e -> [displayError e]) (const []) lsE
+      mErr     = if null errs then Nothing else Just errs
   pure $ st
     & stProfileConfig .~ prf
     & stLocalState    .~ ls
     & stProfileListW  .~ L.list RProfileList (V.fromList profList) 1
+    & stError         .~ mErr
 
 -------------------
 -- List builders --
@@ -384,8 +404,8 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
       Nothing -> True
       Just f  -> T.toLower f `T.isInfixOf` T.toLower (T.pack fp)
 
-    staged   = map fst stagedPairs
-    unstaged = map fst unstagedPairs
+    stagedSet   = Set.fromList (map fst stagedPairs)
+    unstagedSet = Set.fromList (map fst unstagedPairs)
 
     -- Group files by plugin
     pluginGroups = Map.mapWithKey (\_ p -> filter (matchesPlugin p) tracked) plugins
@@ -393,22 +413,14 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
       where metaPrefix = ".config/dotf/"
     unassigned = filter (\f -> not (isMeta f) && not (any (\p -> matchesPlugin p f) (Map.elems plugins)) && matchFilter f) tracked
 
-    matchesPlugin p fp =
-      any (\pp -> pp `isPrefixOf'` fp || fp == pp) (_pluginPaths p)
-
-    isPrefixOf' prefix path =
-      let prefix' = if null prefix || last prefix == '/' then prefix
-                    else prefix ++ "/"
-      in take (length prefix') path == prefix'
+    matchesPlugin p fp = any (`isSubpathOf` fp) (_pluginPaths p)
 
     mkFileItem fp pname
-      | fp `elem` staged   = GStaged fp pname
-      | fp `elem` unstaged =
-          let status = maybe Exists snd $ lookup' fp unstagedPairs
+      | fp `Set.member` stagedSet   = GStaged fp pname
+      | fp `Set.member` unstagedSet =
+          let status = maybe Exists id $ lookup fp unstagedPairs
           in GUnstaged fp status pname
       | otherwise           = GTracked fp pname
-      where
-        lookup' k = foldr (\(a,b) acc -> if a == k then Just (a,b) else acc) Nothing
 
     mkPluginGroup pname files =
       let isCollapsed = Set.member pname collapsed
@@ -424,18 +436,25 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
                       else GUnassignedHeader : map GUnassignedFile unassigned
   in pluginItems ++ unassignedItems
 
--- | Rebuild grouped list preserving selection.
-rebuildGroupedList :: State -> State
-rebuildGroupedList st =
+-- | Rebuild grouped list preserving selection by plugin name.
+rebuildGroupedList :: Maybe PluginName -> State -> State
+rebuildGroupedList mName st =
   let pcfg     = st ^. stPluginConfig
       plugins  = _pcPlugins pcfg
       tracked  = st ^. stAllTracked
       filt     = if st ^. stFilterActive
                  then Just (T.pack $ concat $ E.getEditContents (st ^. stFilterEditor))
                  else Nothing
-      -- We don't have staged/unstaged info cached, so rebuild from scratch
       items    = buildGroupedList plugins tracked [] [] (st ^. stCollapsed) filt
-  in st & stTrackedList .~ L.list RTrackedList (V.fromList items) 1
+      vec      = V.fromList items
+      idx      = case mName of
+        Nothing -> Nothing
+        Just n  -> V.findIndex (isHeader n) vec
+      newList  = L.list RTrackedList vec 1
+  in st & stTrackedList .~ maybe newList (\i -> L.listMoveTo i newList) idx
+  where
+    isHeader n (GHeader name _) = name == n
+    isHeader _ _                = False
 
 -- | Build untracked file list.
 buildUntrackedList :: Map.Map PluginName Plugin
@@ -485,12 +504,29 @@ openAssignPopup fps st =
     & stPopup         .~ Just AssignPopup
     & stFocus         .~ FAssignList
 
--- | Open ignore popup.
-openIgnorePopup :: State -> State
-openIgnorePopup st = st
-  & stIgnoreEditor .~ E.editor RIgnoreEditor (Just 1) ""
-  & stPopup        .~ Just IgnorePopup
-  & stFocus        .~ FIgnoreEditor
+-- | Open ignore popup with path-level segments for selection.
+openIgnorePopup :: Maybe FilePath -> State -> State
+openIgnorePopup mPath st =
+  let segments = pathSegments (fromMaybe "" mPath)
+  in st
+    & stIgnoreList .~ L.list RIgnoreList (V.fromList segments) 1
+    & stPopup      .~ Just IgnorePopup
+    & stFocus      .~ FIgnoreList
+
+-- | Split a path into cumulative prefix segments.
+-- e.g. ".some/dir/file.txt" -> [".some", ".some/dir", ".some/dir/file.txt"]
+pathSegments :: FilePath -> [FilePath]
+pathSegments "" = []
+pathSegments fp =
+  let parts = splitOn '/' fp
+      prefixes = scanl1 (\a b -> a ++ "/" ++ b) parts
+  in prefixes
+  where
+    splitOn _ [] = []
+    splitOn c s  = let (w, rest) = break (== c) s
+                   in w : case rest of
+                            []    -> []
+                            (_:r) -> splitOn c r
 
 -----------
 -- Utils --
@@ -503,15 +539,7 @@ checkStatus env fp = do
   pure (fp, if exists then Exists else Deleted)
 
 -- | Build file cache: map plugin name -> list of tracked files.
-buildFileCache :: GitEnv -> Map.Map PluginName Plugin -> IO (Map.Map PluginName [RelPath])
-buildFileCache env plugins = do
-  trackedE <- gitTracked env
-  let tracked = either (const []) id trackedE
-  pure $ Map.mapWithKey (\_ p ->
-    filter (\fp -> any (\pp -> pp `isPrefixOf'` fp || fp == pp) (_pluginPaths p)) tracked
-    ) plugins
-  where
-    isPrefixOf' prefix path =
-      let prefix' = if null prefix || last prefix == '/' then prefix
-                    else prefix ++ "/"
-      in take (length prefix') path == prefix'
+-- Accepts already-fetched tracked files to avoid redundant git calls.
+buildFileCache :: [RelPath] -> Map.Map PluginName Plugin -> Map.Map PluginName [RelPath]
+buildFileCache tracked plugins =
+  Map.map (\p -> filter (\fp -> any (`isSubpathOf` fp) (_pluginPaths p)) tracked) plugins

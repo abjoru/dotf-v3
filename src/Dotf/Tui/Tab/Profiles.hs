@@ -23,21 +23,21 @@ drawProfilesTab st =
 
     listPane = borderWithLabel
       (titleWidget " Profiles " lFocus)
-      (L.renderList renderProfileItem lFocus pList)
+      (L.renderList (renderProfileItem lFocus) lFocus pList)
 
     detailPane = borderWithLabel
       (titleWidget " Details " dFocus)
       (viewport RProfileDetail Vertical (renderDetail st) <+> fill ' ')
 
 -- | Render a profile list item.
-renderProfileItem :: Bool -> (Profile, Bool) -> Widget RName
-renderProfileItem sel (p, active) =
+renderProfileItem :: Bool -> Bool -> (Profile, Bool) -> Widget RName
+renderProfileItem cFocus sel (p, active) =
   let name = T.unpack (_profileName p)
       icon = if active then "[*] " else "[ ] "
-      a | sel && active = attrActiveItem
-        | sel           = attrSelItem
-        | active        = attrActiveItem
-        | otherwise     = attrItem
+      a | cFocus && sel && active = attrActiveItem
+        | cFocus && sel           = attrSelItem
+        | active                  = attrActiveItem
+        | otherwise               = attrItem
   in withAttr a $ str $ icon ++ name
 
 -- | Render profile detail panel.

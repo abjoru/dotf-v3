@@ -15,6 +15,9 @@ import           Dotf.Types
 import           Dotf.Utils       (pluginsFile, profilesFile)
 import           System.Directory (doesFileExist)
 
+-- Note: validatePluginConfig cannot delegate to Plugin.validatePaths because
+-- Plugin imports Config, which would create a circular dependency.
+
 -- | Load plugin config from ~/.config/dotf/plugins.yaml.
 loadPluginConfig :: GitEnv -> IO (Either DotfError PluginConfig)
 loadPluginConfig env = do
@@ -58,8 +61,9 @@ defaultProfileConfig :: ProfileConfig
 defaultProfileConfig = ProfileConfig Map.empty
 
 -- | Validate that no path appears in multiple plugins.
+-- Uses a Map accumulator for O(n log n) duplicate detection.
 validatePluginConfig :: PluginConfig -> Either DotfError ()
-validatePluginConfig cfg = checkDuplicates allPaths
+validatePluginConfig cfg = go Map.empty allPaths
   where
     allPaths :: [(PluginName, FilePath)]
     allPaths = concatMap expandPlugin $ Map.toList (_pcPlugins cfg)
@@ -67,9 +71,9 @@ validatePluginConfig cfg = checkDuplicates allPaths
     expandPlugin :: (PluginName, Plugin) -> [(PluginName, FilePath)]
     expandPlugin (name, plugin) = map (\p -> (name, p)) (_pluginPaths plugin)
 
-    checkDuplicates :: [(PluginName, FilePath)] -> Either DotfError ()
-    checkDuplicates [] = Right ()
-    checkDuplicates ((name, path):rest) =
-      case lookup path (map (\(n, p) -> (p, n)) rest) of
+    go :: Map.Map FilePath PluginName -> [(PluginName, FilePath)] -> Either DotfError ()
+    go _ [] = Right ()
+    go seen ((name, path):rest) =
+      case Map.lookup path seen of
         Just other -> Left $ PathConflict name other path
-        Nothing    -> checkDuplicates rest
+        Nothing    -> go (Map.insert path name seen) rest

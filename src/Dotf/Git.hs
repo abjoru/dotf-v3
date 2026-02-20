@@ -55,12 +55,13 @@ import           Control.Exception          (SomeException, try)
 import qualified Data.ByteString.Lazy       as B
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Data.Function              ((&))
-import           Data.Text                  (pack)
+import           Data.Text                  (Text)
+import qualified Data.Text.Encoding         as TE
+import           Data.Text.Encoding.Error   (lenientDecode)
 import           Dotf.Types
 import           Dotf.Utils                 (dotfGitDir, gitDirArg, workTreeArg)
 import           System.Directory           (doesDirectoryExist, doesPathExist)
 import           System.FilePath            ((</>))
-import           System.IO                  (IOMode (WriteMode), openFile)
 import qualified System.Process.Typed       as PT
 
 type ReadProcessResult = (PT.ExitCode, B.ByteString, B.ByteString)
@@ -76,7 +77,7 @@ runGit env args = do
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
-    PT.ExitFailure c -> pure $ Left $ GitError c (pack $ C8.unpack err)
+    PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
 
 -- | Run a git command and return stdout.
 runGitOutput :: GitEnv -> [String] -> IO (Either DotfError String)
@@ -95,10 +96,9 @@ gitBare env args = do
 -- | Build a process config with output silenced.
 gitBareSilent :: GitEnv -> [String] -> IO (PT.ProcessConfig () () ())
 gitBareSilent env args = do
-  cfg     <- gitBare env args
-  devNull <- openFile "/dev/null" WriteMode
-  pure $ cfg & PT.setStdout (PT.useHandleClose devNull)
-             & PT.setStderr (PT.useHandleClose devNull)
+  cfg <- gitBare env args
+  pure $ cfg & PT.setStdout PT.nullStream
+             & PT.setStderr PT.nullStream
 
 ------------------
 -- File listing --
@@ -172,11 +172,11 @@ gitPull env = runGit env ["pull"]
 gitCloneBare :: GitEnv -> String -> IO (Either DotfError ())
 gitCloneBare env url = do
   let gitDir = dotfGitDir env
-  cfg <- pure $ PT.proc "git" ["clone", "--bare", url, gitDir]
+      cfg    = PT.proc "git" ["clone", "--bare", url, gitDir]
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> runGit env ["checkout"]
-    PT.ExitFailure c -> pure $ Left $ GitError c (pack $ C8.unpack err)
+    PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
 
 -- | Initialize a new bare repo.
 gitInitBare :: GitEnv -> IO (Either DotfError ())
@@ -186,7 +186,7 @@ gitInitBare env = do
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
-    PT.ExitFailure c -> pure $ Left $ GitError c (pack $ C8.unpack err)
+    PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
 
 ---------------------
 -- Sparse checkout --
@@ -241,7 +241,7 @@ gitRaw env args = do
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
-    PT.ExitFailure c -> pure $ Left $ GitError c (pack $ C8.unpack err)
+    PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
 
 -------------
 -- Queries --
@@ -271,6 +271,14 @@ gitAheadBehind env = do
       [(n, "")] -> n
       _         -> d
 
+-----------
+-- Utils --
+-----------
+
+-- | Decode a lazy ByteString to Text, replacing invalid UTF-8 sequences.
+decodeErr :: B.ByteString -> Text
+decodeErr = TE.decodeUtf8With lenientDecode . B.toStrict
+
 -----------------------
 -- Result processing --
 -----------------------
@@ -278,14 +286,14 @@ gitAheadBehind env = do
 -- | Process a git command result into a list of file paths.
 processFileListResult :: ReadProcessResult -> Either DotfError [FilePath]
 processFileListResult (PT.ExitFailure c, _, err) =
-  Left $ GitError c (pack $ C8.unpack err)
+  Left $ GitError c (decodeErr err)
 processFileListResult (PT.ExitSuccess, out, _) =
   Right $ filter (not . null) $ map C8.unpack (C8.lines out)
 
 -- | Process a git command result into a string.
 processStringResult :: ReadProcessResult -> Either DotfError String
 processStringResult (PT.ExitFailure c, _, err) =
-  Left $ GitError c (pack $ C8.unpack err)
+  Left $ GitError c (decodeErr err)
 processStringResult (PT.ExitSuccess, out, _) =
   Right $ C8.unpack out
 

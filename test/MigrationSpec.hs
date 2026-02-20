@@ -80,10 +80,13 @@ spec = do
       r7 `shouldBe` Right ()
 
       -- Verify state
-      st <- loadLocalState env
-      _lsActiveProfile st `shouldBe` Just "default"
-      _lsInstalledPlugins st `shouldContain` ["shell"]
-      _lsInstalledPlugins st `shouldContain` ["git"]
+      stE <- loadLocalState env
+      case stE of
+        Left err -> expectationFailure $ show err
+        Right st -> do
+          _lsActiveProfile st `shouldBe` Just "default"
+          _lsInstalledPlugins st `shouldContain` ["shell"]
+          _lsInstalledPlugins st `shouldContain` ["git"]
 
     it "fails on missing bare repo" $ do
       let env = GitEnv "/tmp/dotf-test-nonexistent"

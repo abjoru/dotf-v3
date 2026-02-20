@@ -63,7 +63,7 @@ theme = newTheme
   , (attrUnstagedSelItem, red `on` yellow)
   -- Headers
   , (attrHeader, withStyle (fg brightCyan) bold)
-  , (attrHeaderSel, withStyle (brightCyan `on` brightYellow) bold)
+  , (attrHeaderSel, withStyle (black `on` brightYellow) bold)
   -- Status indicators
   , (attrInstalledItem, fg brightGreen)
   , (attrActiveItem, withStyle (fg brightGreen) bold)

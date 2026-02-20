@@ -24,21 +24,21 @@ drawPluginsTab st =
 
     listPane = borderWithLabel
       (titleWidget " Plugins " lFocus)
-      (L.renderList renderPluginItem lFocus pList)
+      (L.renderList (renderPluginItem lFocus) lFocus pList)
 
     detailPane = borderWithLabel
       (titleWidget " Details " dFocus)
       (viewport RPluginDetail Vertical (renderDetail st) <+> fill ' ')
 
 -- | Render a plugin list item.
-renderPluginItem :: Bool -> (Plugin, Bool) -> Widget RName
-renderPluginItem sel (p, installed) =
+renderPluginItem :: Bool -> Bool -> (Plugin, Bool) -> Widget RName
+renderPluginItem cFocus sel (p, installed) =
   let name = T.unpack (_pluginName p)
       icon = if installed then "[*] " else "[ ] "
-      a | sel && installed = attrInstalledItem
-        | sel              = attrSelItem
-        | installed        = attrInstalledItem
-        | otherwise        = attrItem
+      a | cFocus && sel && installed = attrInstalledItem
+        | cFocus && sel              = attrSelItem
+        | installed                  = attrInstalledItem
+        | otherwise                  = attrItem
   in withAttr a $ str $ icon ++ name
 
 -- | Render plugin detail panel.

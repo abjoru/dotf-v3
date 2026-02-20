@@ -16,6 +16,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
+import           Dotf.Path       (isSubpathOf)
 import           Dotf.Plugin     (resolveDependencies)
 import           Dotf.State
 import           Dotf.Types
@@ -25,19 +26,14 @@ import           Dotf.Types
 checkCoverage :: [RelPath] -> Map.Map PluginName Plugin -> ([RelPath], [RelPath])
 checkCoverage files plugins =
   let metaPrefix = ".config/dotf/"
-      userFiles = filter (not . (metaPrefix `isPrefixOf'`)) files
+      userFiles = filter (not . (metaPrefix `isSubpathOf`)) files
       allPluginPaths = concatMap _pluginPaths (Map.elems plugins)
-      isAssigned f = any (\pp -> pp `isPrefixOf'` f || f == pp) allPluginPaths
+      isAssigned f = any (`isSubpathOf` f) allPluginPaths
       (assigned, unassigned) = foldr classify ([], []) userFiles
       classify f (as, us)
         | isAssigned f = (f:as, us)
         | otherwise    = (as, f:us)
   in (assigned, unassigned)
-  where
-    isPrefixOf' prefix path =
-      let prefix' = if null prefix || last prefix == '/' then prefix
-                    else prefix ++ "/"
-      in take (length prefix') path == prefix'
 
 -- | List all profiles with their active status.
 listProfiles :: ProfileConfig -> LocalState -> [(Profile, Bool)]
@@ -93,14 +89,17 @@ deleteProfile env name = do
         Just _  -> do
           let newCfg = cfg { _prfProfiles = Map.delete name (_prfProfiles cfg) }
           saveProfileConfig env newCfg
-          st <- loadLocalState env
-          -- Clear active profile if we're deleting the active one
-          case _lsActiveProfile st of
-            Just active | active == name -> do
-              let newSt = st { _lsActiveProfile = Nothing }
-              saveLocalState env newSt
-            _ -> pure ()
-          pure $ Right ()
+          stResult <- loadLocalState env
+          case stResult of
+            Left err -> pure $ Left err
+            Right st -> do
+              -- Clear active profile if we're deleting the active one
+              case _lsActiveProfile st of
+                Just active | active == name -> do
+                  let newSt = st { _lsActiveProfile = Nothing }
+                  saveLocalState env newSt
+                _ -> pure ()
+              pure $ Right ()
 
 -- | Activate a profile: check coverage, resolve deps, set sparse checkout.
 activateProfile :: GitEnv -> ProfileName -> IO (Either DotfError ())
@@ -152,7 +151,10 @@ deactivateProfile env = do
   case result of
     Left err -> pure $ Left err
     Right () -> do
-      st <- loadLocalState env
-      let newSt = st { _lsActiveProfile = Nothing, _lsInstalledPlugins = [] }
-      saveLocalState env newSt
-      pure $ Right ()
+      stResult <- loadLocalState env
+      case stResult of
+        Left err -> pure $ Left err
+        Right st -> do
+          let newSt = st { _lsActiveProfile = Nothing, _lsInstalledPlugins = [] }
+          saveLocalState env newSt
+          pure $ Right ()

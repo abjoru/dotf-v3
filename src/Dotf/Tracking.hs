@@ -13,14 +13,16 @@ module Dotf.Tracking (
   listWatchPaths,
 ) where
 
-import qualified Data.Map.Strict as Map
-import qualified Data.Text       as T
+import           Control.Exception (IOException, try)
+import qualified Data.Map.Strict   as Map
+import qualified Data.Text         as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path       (consolidatePaths, isSubpathOf, normalizePath)
+import           Dotf.Path         (consolidatePaths, isSubpathOf,
+                                    normalizePath)
 import           Dotf.State
 import           Dotf.Types
-import           Dotf.Utils      (appendToFile, gitIgnoreFile)
+import           Dotf.Utils        (appendToFile, gitIgnoreFile)
 
 -- | Classify untracked files into plugin-scoped and watchlist buckets.
 -- Files under a plugin's paths go to plugin bucket, remainder to watchlist
@@ -98,8 +100,8 @@ untrackFile env path = do
 -- | Add a pattern to .gitignore.
 ignorePattern :: GitEnv -> T.Text -> IO (Either DotfError ())
 ignorePattern env pattern' = do
-  appendToFile (T.unpack pattern') (gitIgnoreFile env)
-  pure $ Right ()
+  result <- try (appendToFile (T.unpack pattern') (gitIgnoreFile env)) :: IO (Either IOException ())
+  pure $ either (Left . ConfigError . T.pack . show) Right result
 
 -- | Discover all untracked files, classified by plugin scope.
 discoverUntracked :: GitEnv -> IO (Either DotfError UntrackedReport)
@@ -108,18 +110,21 @@ discoverUntracked env = do
   case cfgResult of
     Left err -> pure $ Left err
     Right cfg -> do
-      st <- loadLocalState env
-      untrackedResult <- gitUntracked env
-      case untrackedResult of
+      stResult <- loadLocalState env
+      case stResult of
         Left err -> pure $ Left err
-        Right files -> do
-          -- Only classify against installed plugins
-          let installedPlugins = Map.filterWithKey
-                (\k _ -> k `elem` _lsInstalledPlugins st)
-                (_pcPlugins cfg)
-              wlPaths' = _wlPaths (_pcWatchlist cfg)
-              (plugScoped, wl) = classifyUntracked files installedPlugins wlPaths'
-          pure $ Right $ UntrackedReport plugScoped wl
+        Right st -> do
+          untrackedResult <- gitUntracked env
+          case untrackedResult of
+            Left err -> pure $ Left err
+            Right files -> do
+              -- Only classify against installed plugins
+              let installedPlugins = Map.filterWithKey
+                    (\k _ -> k `elem` _lsInstalledPlugins st)
+                    (_pcPlugins cfg)
+                  wlPaths' = _wlPaths (_pcWatchlist cfg)
+                  (plugScoped, wl) = classifyUntracked files installedPlugins wlPaths'
+              pure $ Right $ UntrackedReport plugScoped wl
 
 -- | Discover untracked files for a specific plugin.
 discoverPluginUntracked :: GitEnv -> PluginName -> IO (Either DotfError [RelPath])
@@ -141,6 +146,7 @@ discoverPluginUntracked env name = do
       any (\pp -> pp `isSubpathOf` fp) (_pluginPaths plugin)
 
 -- | Add a path to the watchlist.
+-- Note: uses list append (O(n)) — acceptable since watchlists are small in practice.
 addWatchPath :: GitEnv -> RelPath -> IO (Either DotfError ())
 addWatchPath env path = do
   let relPath = normalizePath (_geHome env) path

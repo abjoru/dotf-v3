@@ -95,7 +95,7 @@ data Profile = Profile
   , _profilePlugins :: [PluginName]
   } deriving (Show, Eq)
 
-data ProfileConfig = ProfileConfig
+newtype ProfileConfig = ProfileConfig
   { _prfProfiles :: Map.Map ProfileName Profile
   } deriving (Show, Eq)
 
@@ -158,8 +158,7 @@ makeLenses ''UntrackedReport
 --------------------
 
 instance FromJSON Hook where
-  parseJSON (Array arr) = InlineHook <$> mapM parseJSON (toList arr)
-    where toList = foldr (:) []
+  parseJSON (Array arr) = InlineHook <$> mapM parseJSON (foldr (:) [] arr)
   parseJSON (String s)  = pure $ ScriptHook (T.unpack s)
   parseJSON v           = fail $ "Expected Array or String for Hook, got: " ++ show v
 
@@ -185,8 +184,7 @@ instance ToJSON Plugin where
     ]
 
 instance FromJSON Watchlist where
-  parseJSON (Array arr) = Watchlist <$> mapM parseJSON (toList arr)
-    where toList = foldr (:) []
+  parseJSON (Array arr) = Watchlist <$> mapM parseJSON (foldr (:) [] arr)
   parseJSON _           = fail "Expected Array for Watchlist"
 
 instance ToJSON Watchlist where

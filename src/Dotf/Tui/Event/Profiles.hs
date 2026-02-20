@@ -27,7 +27,7 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
     name <- getLine
     putStr "Plugins (comma-separated): "
     pluginsStr <- getLine
-    let plugins = map (T.strip . T.pack) $ splitOn ',' pluginsStr
+    let plugins = map T.strip $ T.splitOn "," (T.pack pluginsStr)
     result <- createProfile env (T.pack name) plugins
     case result of
       Left err -> putStrLn $ "Error: " ++ show err
@@ -101,11 +101,3 @@ getSelectedProfile = do
   pl <- use stProfileListW
   pure $ snd <$> L.listSelectedElement pl
 
--- | Split a string on a character.
-splitOn :: Char -> String -> [String]
-splitOn _ [] = [""]
-splitOn c (x:xs)
-  | x == c    = "" : splitOn c xs
-  | otherwise = case splitOn c xs of
-      []    -> [[x]]
-      (h:t) -> (x:h) : t

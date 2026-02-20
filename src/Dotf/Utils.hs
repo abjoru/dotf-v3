@@ -9,7 +9,6 @@ module Dotf.Utils (
   metadataDir,
   pluginsFile,
   profilesFile,
-  hooksDir,
   stateDir,
   stateFile,
 
@@ -18,13 +17,14 @@ module Dotf.Utils (
   appendToFile,
   which,
   ask,
-  ask',
 ) where
 
 import           Control.Exception       (SomeException, try)
+import           Data.Maybe              (fromMaybe)
 import           Data.String.Interpolate (i)
 import           Dotf.Types              (GitEnv (..))
 import           System.Directory        (doesFileExist)
+import           System.Environment      (lookupEnv)
 import           System.FilePath         ((</>))
 import           System.IO               (IOMode (WriteMode), hFlush, stdout,
                                           withFile)
@@ -66,10 +66,6 @@ pluginsFile env = metadataDir env </> "plugins.yaml"
 profilesFile :: GitEnv -> FilePath
 profilesFile env = metadataDir env </> "profiles.yaml"
 
--- | Path to hooks directory.
-hooksDir :: GitEnv -> FilePath
-hooksDir env = metadataDir env </> "hooks"
-
 -- | Local state directory.
 stateDir :: GitEnv -> FilePath
 stateDir env = _geHome env </> ".local" </> "state" </> "dotf"
@@ -82,13 +78,11 @@ stateFile env = stateDir env </> "state.yaml"
 -- IO Utilities   --
 --------------------
 
--- | Open $EDITOR with the given file.
+-- | Open $EDITOR (fallback: nvim) with the given file.
 editFile :: FilePath -> IO ()
 editFile file = do
-  editor <- lookupEditor
+  editor <- fromMaybe "nvim" <$> lookupEnv "EDITOR"
   callProcess editor [file]
-  where
-    lookupEditor = pure "nvim" -- TODO: respect $EDITOR
 
 -- | Append a line to a file, creating it if needed.
 appendToFile :: String -> FilePath -> IO ()
@@ -116,6 +110,3 @@ ask msg = do
   line <- getLine
   pure $ line `elem` ["y", "Y", "yes", "Yes"]
 
--- | Ask with default message.
-ask' :: String -> IO Bool
-ask' = ask

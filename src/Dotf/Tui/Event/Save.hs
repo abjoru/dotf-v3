@@ -88,17 +88,20 @@ doCommitAndPush = do
   if null selected || null (filter (not . null) (lines msg))
     then stError .= Just ["No files selected or empty commit message"]
     else do
-      -- Stage selected, unstage unselected
+      -- Stage selected, unstage unselected; collect and check errors before commit
       result <- liftIO $ do
-        mapM_ (\i ->
+        stageResults <- mapM (\i ->
           if _siSelected i
-            then gitStage env (_siPath i) >> pure ()
-            else gitUnstage env (_siPath i) >> pure ()
+            then gitStage env (_siPath i)
+            else gitUnstage env (_siPath i)
           ) items
-        commitResult <- gitCommit env (strip msg)
-        case commitResult of
+        case sequence stageResults of
           Left err -> pure $ Left err
-          Right () -> gitPush env
+          Right _  -> do
+            commitResult <- gitCommit env (strip msg)
+            case commitResult of
+              Left err -> pure $ Left err
+              Right () -> gitPush env
       case result of
         Left err -> stError .= Just [displayError err]
         Right () -> do

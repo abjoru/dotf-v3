@@ -4,13 +4,13 @@ module Dotf.Options (
   ProfileCommand(..),
   WatchlistCommand(..),
 
-  readOpts,
   readOptsOrTui,
   commandParser,
 ) where
 
 import           Data.String.Interpolate (__i)
 import           Data.Text               (Text, pack)
+import qualified Data.Text               as T
 import           Data.Version            (showVersion)
 import           Options.Applicative
 import           Paths_dotf              (version)
@@ -164,18 +164,7 @@ parseProfileNew = ProfileNew
       )
   where
     splitCommas :: String -> [Text]
-    splitCommas s = map (pack . trim) $ splitOn ',' s
-
-    splitOn :: Char -> String -> [String]
-    splitOn _ [] = [""]
-    splitOn c (x:xs)
-      | x == c    = "" : splitOn c xs
-      | otherwise = case splitOn c xs of
-          []    -> [x:[]]
-          (h:t) -> (x:h) : t
-
-    trim :: String -> String
-    trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+    splitCommas s = map T.strip $ T.splitOn "," (pack s)
 
 parseProfileDelete :: Parser ProfileCommand
 parseProfileDelete = ProfileDelete
@@ -254,12 +243,6 @@ parseGitRaw = GitRaw
 -- | Exported parser for testing.
 commandParser :: Parser Command
 commandParser = parseCommand
-
-readOpts :: IO Command
-readOpts = execParser $ info (parseCommand <**> helper <**> versionOpt)
-  (  fullDesc
-  <> progDesc [__i|dotf v#{showVersion version} - Modular dotfile manager|]
-  )
 
 -- | Parse command or return Nothing (launch TUI).
 readOptsOrTui :: IO (Maybe Command)

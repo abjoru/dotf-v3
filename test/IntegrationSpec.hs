@@ -76,9 +76,12 @@ spec = do
       r <- installPlugins env ["shell"]
       r `shouldBe` Right ()
       -- Verify both installed
-      st <- loadLocalState env
-      _lsInstalledPlugins st `shouldContain` ["base"]
-      _lsInstalledPlugins st `shouldContain` ["shell"]
+      stE <- loadLocalState env
+      case stE of
+        Left err -> expectationFailure $ show err
+        Right st -> do
+          _lsInstalledPlugins st `shouldContain` ["base"]
+          _lsInstalledPlugins st `shouldContain` ["shell"]
 
     it "profile create/activate blocks on unassigned files" $ withTestEnv $ \env -> do
       setupTestFiles env
@@ -103,8 +106,8 @@ spec = do
       let st = LocalState (Just "linux") ["shell", "git"]
       saveLocalState env st
       -- Load it back
-      st' <- loadLocalState env
-      st' `shouldBe` st
+      st'E <- loadLocalState env
+      st'E `shouldBe` Right st
 
     it "watchlist CRUD" $ withTestEnv $ \env -> do
       setupTestFiles env

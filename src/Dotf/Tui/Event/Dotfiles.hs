@@ -9,11 +9,12 @@ import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map.Strict        as Map
 import qualified Data.Set               as Set
 import           Dotf.Git               (gitDiffFile)
+import           Dotf.Path              (isSubpathOf)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile)
 import qualified Graphics.Vty           as V
-import           Lens.Micro             ((^.))
+import           Lens.Micro             ((&), (.~), (^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Dotfiles tab.
@@ -55,10 +56,11 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 's') [])) = do
   st' <- liftIO $ openSavePopup st
   put st'
 
--- I: ignore trigger
+-- I: ignore trigger (pre-populate with selected file)
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'I') [])) = do
+  mPath <- getSelectedPath
   st <- get
-  put $ openIgnorePopup st
+  put $ openIgnorePopup mPath st
 
 -- f: open filter
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'f') [])) = do
@@ -100,7 +102,7 @@ toggleCollapse = do
                            else Set.insert name collapsed
           stCollapsed .= collapsed'
           st <- get
-          put $ rebuildGroupedList st
+          put $ rebuildGroupedList (Just name) st
         _ -> pure ()
     _ -> pure ()
 
@@ -157,13 +159,7 @@ toggleGroupSelect _ = pure ()
 
 -- | Check if a file belongs to a plugin.
 matchesPlugin :: Plugin -> RelPath -> Bool
-matchesPlugin p fp =
-  any (\pp -> isPrefixOf' pp fp || fp == pp) (_pluginPaths p)
-  where
-    isPrefixOf' prefix path =
-      let prefix' = if null prefix || last prefix == '/' then prefix
-                    else prefix ++ "/"
-      in take (length prefix') path == prefix'
+matchesPlugin p fp = any (`isSubpathOf` fp) (_pluginPaths p)
 
 -- | Extract file path from a GroupItem, if it's a file item.
 itemPath :: GroupItem -> Maybe RelPath
@@ -198,13 +194,14 @@ diffSelected = do
       suspendAndResume $ do
         result <- gitDiffFile env fp
         case result of
-          Left _     -> pure ()
+          Left err    -> do
+            st' <- syncDotfiles st
+            pure $ st' & stError .~ Just [displayError err]
           Right diff' -> do
             putStrLn diff'
             putStrLn "\nPress Enter to continue..."
             _ <- getLine
-            pure ()
-        syncDotfiles st
+            syncDotfiles st
 
 -- | Get the file path from the currently selected item.
 getSelectedPath :: EventM RName State (Maybe FilePath)

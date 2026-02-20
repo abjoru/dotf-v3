@@ -40,7 +40,7 @@ chooseCursor :: State -> [CursorLocation RName] -> Maybe (CursorLocation RName)
 chooseCursor st = case st ^. stPopup of
   Just SavePopup   | st ^. stFocus == FSaveEditor   -> showCursorNamed RCommitEditor
   Just AssignPopup | st ^. stFocus == FAssignEditor -> showCursorNamed RAssignEditor
-  Just IgnorePopup  -> showCursorNamed RIgnoreEditor
+  Just IgnorePopup  -> const Nothing
   Just FilterPopup  -> showCursorNamed RFilterEditor
   _                 -> neverShowCursor st
 
@@ -139,13 +139,19 @@ renderAssignItem sel (name, _) =
   let a = if sel then attrSelItem else attrItem
   in withAttr a $ str $ "  " ++ show name
 
--- | Ignore popup.
+-- | Ignore popup: path-level selector.
 drawIgnorePopup :: State -> Widget RName
 drawIgnorePopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " Ignore ") $
-  hLimit 50 $ padAll 1 $ vBox
-    [ withAttr attrBold $ str "Pattern to add to .gitignore:"
-    , vLimit 1 $ E.renderEditor (str . unlines) True (st ^. stIgnoreEditor)
+  hLimit 60 $ vLimit 12 $ padAll 1 $ vBox
+    [ withAttr attrBold $ str "Select path level to ignore:"
+    , L.renderList renderIgnoreItem True (st ^. stIgnoreList)
     ]
+
+-- | Render an ignore list item.
+renderIgnoreItem :: Bool -> FilePath -> Widget RName
+renderIgnoreItem sel fp =
+  let a = if sel then attrSelItem else attrItem
+  in withAttr a $ str $ "  " ++ fp
 
 -- | Filter popup.
 drawFilterPopup :: State -> Widget RName

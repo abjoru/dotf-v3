@@ -6,6 +6,7 @@ import           Brick
 import           Brick.Widgets.Border (borderWithLabel)
 import qualified Brick.Widgets.List   as L
 import qualified Data.Set             as Set
+import qualified Data.Text            as T
 import qualified Data.Vector          as V
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
@@ -35,12 +36,12 @@ drawDotfilesTab st =
 
 -- | Render a grouped item in the tracked list.
 renderGroupItem :: Set.Set RelPath -> Bool -> Bool -> GroupItem -> Widget RName
-renderGroupItem _ _ sel (GHeader name collapsed) =
+renderGroupItem _ cFocus sel (GHeader name collapsed) =
   let icon = if collapsed then "+ " else "- "
-      a = if sel then attrHeaderSel else attrHeader
-  in withAttr a $ str $ icon ++ show name
-renderGroupItem _ _ sel GUnassignedHeader =
-  let a = if sel then attrHeaderSel else attrHeader
+      a = if cFocus && sel then attrHeaderSel else attrHeader
+  in withAttr a $ str $ icon ++ T.unpack name
+renderGroupItem _ cFocus sel GUnassignedHeader =
+  let a = if cFocus && sel then attrHeaderSel else attrHeader
   in withAttr a $ str "- [unassigned]"
 renderGroupItem selected cFocus sel (GStaged fp _) =
   let a = if cFocus && sel then attrStagedSelItem else attrStagedItem
@@ -62,11 +63,11 @@ renderGroupItem selected cFocus sel (GUnassignedFile fp) =
 
 -- | Render an untracked item.
 renderUntrackedItem :: Bool -> Bool -> UntrackedItem -> Widget RName
-renderUntrackedItem _ sel (UPluginHeader name) =
-  let a = if sel then attrHeaderSel else attrHeader
-  in withAttr a $ str $ show name
-renderUntrackedItem _ sel UWatchlistHeader =
-  let a = if sel then attrHeaderSel else attrHeader
+renderUntrackedItem cFocus sel (UPluginHeader name) =
+  let a = if cFocus && sel then attrHeaderSel else attrHeader
+  in withAttr a $ str $ T.unpack name
+renderUntrackedItem cFocus sel UWatchlistHeader =
+  let a = if cFocus && sel then attrHeaderSel else attrHeader
   in withAttr a $ str "[watchlist]"
 renderUntrackedItem cFocus sel (UPluginFile fp _) =
   let a = if cFocus && sel then attrSelItem else attrItem

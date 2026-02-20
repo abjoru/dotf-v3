@@ -45,7 +45,9 @@ module Dotf.Commands (
   runGitRaw,
 ) where
 
+import           Control.Monad        (when)
 import qualified Data.Map.Strict      as Map
+import           Data.Maybe           (fromMaybe)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Dotf.Config
@@ -131,11 +133,14 @@ runPluginList env = do
   case cfgResult of
     Left err -> handleError err
     Right cfg -> do
-      st <- loadLocalState env
-      let items = listPlugins cfg st
-      if null items
-        then putStrLn "No plugins defined."
-        else mapM_ printPlugin items
+      stResult <- loadLocalState env
+      case stResult of
+        Left err -> handleError err
+        Right st -> do
+          let items = listPlugins cfg st
+          if null items
+            then putStrLn "No plugins defined."
+            else mapM_ printPlugin items
   where
     printPlugin (p, installed) = do
       let marker = if installed then "●" else "○" :: String
@@ -176,20 +181,23 @@ runPluginInfo env name = do
   case cfgResult of
     Left err -> handleError err
     Right cfg -> do
-      st <- loadLocalState env
-      result <- pluginInfo env name cfg st
-      case result of
+      stResult <- loadLocalState env
+      case stResult of
         Left err -> handleError err
-        Right (p, installed, files) -> do
-          putStrLn $ "Plugin: " ++ T.unpack (_pluginName p)
-          putStrLn $ "Status: " ++ if installed then "installed" else "not installed"
-          maybe (pure ()) (\d -> putStrLn $ "Description: " ++ T.unpack d) (_pluginDescription p)
-          case _pluginDepends p of
-            [] -> pure ()
-            ds -> putStrLn $ "Depends: " ++ T.unpack (T.intercalate ", " ds)
-          putStrLn $ "Paths: " ++ show (_pluginPaths p)
-          putStrLn $ "Files (" ++ show (length files) ++ "):"
-          mapM_ (\f -> putStrLn $ "  " ++ f) files
+        Right st -> do
+          result <- pluginInfo env name cfg st
+          case result of
+            Left err -> handleError err
+            Right (p, installed, files) -> do
+              putStrLn $ "Plugin: " ++ T.unpack (_pluginName p)
+              putStrLn $ "Status: " ++ if installed then "installed" else "not installed"
+              maybe (pure ()) (\d -> putStrLn $ "Description: " ++ T.unpack d) (_pluginDescription p)
+              case _pluginDepends p of
+                [] -> pure ()
+                ds -> putStrLn $ "Depends: " ++ T.unpack (T.intercalate ", " ds)
+              putStrLn $ "Paths: " ++ show (_pluginPaths p)
+              putStrLn $ "Files (" ++ show (length files) ++ "):"
+              mapM_ (\f -> putStrLn $ "  " ++ f) files
 
 ---------------------
 -- Profile commands --
@@ -201,11 +209,14 @@ runProfileList env = do
   case prfResult of
     Left err -> handleError err
     Right prf -> do
-      st <- loadLocalState env
-      let items = listProfiles prf st
-      if null items
-        then putStrLn "No profiles defined."
-        else mapM_ printProfile items
+      stResult <- loadLocalState env
+      case stResult of
+        Left err -> handleError err
+        Right st -> do
+          let items = listProfiles prf st
+          if null items
+            then putStrLn "No profiles defined."
+            else mapM_ printProfile items
   where
     printProfile (p, active) = do
       let marker = if active then "★" else "○" :: String
@@ -253,13 +264,15 @@ runProfileShow env = do
   case prfResult of
     Left err -> handleError err
     Right prf -> do
-      st <- loadLocalState env
-      case showActiveProfile prf st of
-        Nothing -> putStrLn "No active profile."
-        Just (p, installed) -> do
-          putStrLn $ "Active profile: " ++ T.unpack (_profileName p)
-          putStrLn "Installed plugins:"
-          mapM_ (\n -> putStrLn $ "  ● " ++ T.unpack n) installed
+      stResult <- loadLocalState env
+      case stResult of
+        Left err -> handleError err
+        Right st -> case showActiveProfile prf st of
+          Nothing -> putStrLn "No active profile."
+          Just (p, installed) -> do
+            putStrLn $ "Active profile: " ++ T.unpack (_profileName p)
+            putStrLn "Installed plugins:"
+            mapM_ (\n -> putStrLn $ "  ● " ++ T.unpack n) installed
 
 -----------------------
 -- Tracking commands --
@@ -329,8 +342,6 @@ runUntracked env mPlugin = case mPlugin of
     printPluginGroup (name, files) = do
       putStrLn $ T.unpack name ++ ":"
       mapM_ (\f -> putStrLn $ "  " ++ f) files
-    when True  m = m
-    when False _ = pure ()
 
 -----------------------
 -- Watchlist commands --
@@ -370,26 +381,29 @@ runSave env mMsg = do
   case stageResult of
     Left err -> handleError err
     Right unstaged -> do
-      mapM_ (gitStage env) unstaged
-      -- Check if there's anything to commit
-      staged <- gitTrackedStaged env
-      case staged of
+      stageResults <- mapM (gitStage env) unstaged
+      case sequence stageResults of
         Left err -> handleError err
-        Right files
-          | null files -> putStrLn "Nothing to save."
-          | otherwise -> do
-            let msg = maybe "dotf save" id mMsg
-            commitResult <- gitCommit env msg
-            case commitResult of
-              Left err -> handleError err
-              Right () -> do
-                pushResult <- gitPush env
-                case pushResult of
-                  Left err -> do
-                    putStrLn "Committed but push failed:"
-                    handleError err
-                  Right () ->
-                    putStrLn $ "Saved: " ++ show (length files) ++ " file(s)"
+        Right _  -> do
+          -- Check if there's anything to commit
+          staged <- gitTrackedStaged env
+          case staged of
+            Left err -> handleError err
+            Right files
+              | null files -> putStrLn "Nothing to save."
+              | otherwise  -> do
+                  let msg = fromMaybe "dotf save" mMsg
+                  commitResult <- gitCommit env msg
+                  case commitResult of
+                    Left err -> handleError err
+                    Right () -> do
+                      pushResult <- gitPush env
+                      case pushResult of
+                        Left err -> do
+                          putStrLn "Committed but push failed:"
+                          handleError err
+                        Right () ->
+                          putStrLn $ "Saved: " ++ show (length files) ++ " file(s)"
 
 runStage :: GitEnv -> [FilePath] -> IO ()
 runStage env files = do
@@ -407,7 +421,7 @@ runUnstage env files = do
 
 runCommit :: GitEnv -> Maybe String -> IO ()
 runCommit env mMsg = do
-  let msg = maybe "dotf commit" id mMsg
+  let msg = fromMaybe "dotf commit" mMsg
   result <- gitCommit env msg
   case result of
     Left err -> handleError err
@@ -455,15 +469,5 @@ runGitRaw env args = do
 
 handleError :: DotfError -> IO ()
 handleError err = do
-  putStrLn $ "Error: " ++ formatError err
+  putStrLn $ "Error: " ++ displayError err
   exitFailure
-
-formatError :: DotfError -> String
-formatError (GitError code msg)         = "git error (" ++ show code ++ "): " ++ T.unpack msg
-formatError (ConfigError msg)           = "config: " ++ T.unpack msg
-formatError (PathConflict a b path)     = "path conflict: " ++ path ++ " claimed by " ++ T.unpack a ++ " and " ++ T.unpack b
-formatError (PluginNotFound name)       = "plugin not found: " ++ T.unpack name
-formatError (ProfileNotFound name)      = "profile not found: " ++ T.unpack name
-formatError (DependencyError msg)       = "dependency: " ++ T.unpack msg
-formatError (UnassignedFilesExist _)    = "unassigned files exist"
-formatError (ValidationError msg)       = T.unpack msg

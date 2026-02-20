@@ -6,6 +6,7 @@ module Dotf.Path (
   relToAbs,
 ) where
 
+import           Data.List       (find)
 import qualified Data.Map.Strict as Map
 import           Dotf.Types      (Plugin (..), PluginName, RelPath)
 import           System.FilePath (joinPath, makeRelative, normalise,
@@ -64,13 +65,8 @@ commonDirPrefix a b =
 
 -- | Find the plugin that owns a given path.
 findMatchingPlugin :: RelPath -> Map.Map PluginName Plugin -> Maybe PluginName
-findMatchingPlugin path = fst . Map.foldlWithKey' check (Nothing, False)
-  where
-    check (found, True) _ _  = (found, True)
-    check _           k plugin =
-      if any (\pp -> pp `isSubpathOf` path || path == normalise pp) (_pluginPaths plugin)
-      then (Just k, True)
-      else (Nothing, False)
+findMatchingPlugin path plugins =
+  fst <$> find (\(_, p) -> any (\pp -> pp `isSubpathOf` path || path == normalise pp) (_pluginPaths p)) (Map.toList plugins)
 
 -- | Convert a relative path to an absolute path.
 relToAbs :: FilePath -> RelPath -> FilePath

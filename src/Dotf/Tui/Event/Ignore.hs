@@ -4,7 +4,7 @@ module Dotf.Tui.Event.Ignore (
 
 import           Brick                  (BrickEvent (..))
 import           Brick.Types            (EventM, get, put)
-import qualified Brick.Widgets.Edit     as E
+import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Text              as T
 import           Dotf.Tracking          (ignorePattern)
@@ -21,25 +21,26 @@ handleIgnoreEvent (VtyEvent (V.EvKey V.KEsc [])) = do
   stPopup .= Nothing
   stFocus .= FUntracked
 
--- Enter: add to .gitignore
+-- Enter: add selected segment to .gitignore
 handleIgnoreEvent (VtyEvent (V.EvKey V.KEnter [])) = do
   st <- get
-  let env     = st ^. stEnv
-      pattern' = T.pack $ concat $ E.getEditContents (st ^. stIgnoreEditor)
-  if T.null (T.strip pattern')
-    then stError .= Just ["Pattern cannot be empty"]
-    else do
-      result <- liftIO $ ignorePattern env (T.strip pattern')
+  let env = st ^. stEnv
+  case L.listSelectedElement (st ^. stIgnoreList) of
+    Nothing -> stError .= Just ["No pattern selected"]
+    Just (_, selected) -> do
+      let pat = T.pack selected
+      result <- liftIO $ ignorePattern env pat
       case result of
         Left err -> stError .= Just [displayError err]
         Right () -> do
           stPopup .= Nothing
           stFocus .= FUntracked
-          st' <- liftIO $ syncDotfiles st
+          updated <- get
+          st' <- liftIO $ syncDotfiles updated
           put st'
 
--- Editor events
+-- List navigation (vi keys + arrows)
 handleIgnoreEvent (VtyEvent ev) =
-  zoom stIgnoreEditor $ E.handleEditorEvent (VtyEvent ev)
+  zoom stIgnoreList $ L.handleListEventVi L.handleListEvent ev
 
 handleIgnoreEvent _ = pure ()
