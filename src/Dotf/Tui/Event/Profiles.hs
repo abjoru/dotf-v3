@@ -17,11 +17,13 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Profiles tab.
 handleProfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation
-handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = navList (V.EvKey V.KDown [])
-handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = navList (V.EvKey V.KUp [])
-handleProfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))     = navList ev
-handleProfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))       = navList ev
+-- Navigation (vi-enabled)
+handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') [])) = navList ev
+handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') [])) = navList ev
+handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') [])) = navList ev
+handleProfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') [])) = navList ev
+handleProfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))        = navList ev
+handleProfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))          = navList ev
 
 -- n: new profile
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
@@ -84,12 +86,12 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'x') [])) = do
 
 handleProfilesEvent _ = pure ()
 
--- | Navigate profile list.
+-- | Navigate profile list (vi keys enabled).
 navList :: V.Event -> EventM RName State ()
 navList ev = do
   f <- use stFocus
   case f of
-    FProfileList -> zoom stProfileListW $ L.handleListEvent ev
+    FProfileList -> zoom stProfileListW $ L.handleListEventVi L.handleListEvent ev
     _            -> pure ()
 
 -- | Get currently selected profile.

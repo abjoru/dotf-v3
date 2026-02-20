@@ -17,13 +17,15 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Dotfiles tab.
 handleDotfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))      = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))        = handleListNav ev
-handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = handleListNav (V.EvKey V.KDown [])
-handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = handleListNav (V.EvKey V.KUp [])
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KHome []))   = handleListNav ev
-handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KEnd []))       = handleListNav ev
+-- Navigation (vi-enabled via handleListEventVi)
+handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KDown []))          = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KUp []))            = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KHome []))          = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey V.KEnd []))           = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') []))   = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') []))   = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') []))   = handleListNav ev
+handleDotfilesEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') []))   = handleListNav ev
 
 -- Space: toggle collapse on headers
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = toggleCollapse
@@ -75,13 +77,13 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'F') [])) = do
 
 handleDotfilesEvent _ = pure ()
 
--- | Navigate list based on current focus.
+-- | Navigate list based on current focus (vi keys enabled).
 handleListNav :: V.Event -> EventM RName State ()
 handleListNav ev = do
   f <- use stFocus
   case f of
-    FTracked   -> zoom stTrackedList $ L.handleListEvent ev
-    FUntracked -> zoom stUntrackedList $ L.handleListEvent ev
+    FTracked   -> zoom stTrackedList $ L.handleListEventVi L.handleListEvent ev
+    FUntracked -> zoom stUntrackedList $ L.handleListEventVi L.handleListEvent ev
     _          -> pure ()
 
 -- | Toggle collapse on plugin header.

@@ -8,6 +8,7 @@ import qualified Brick.Widgets.Edit     as E
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Text              as T
+import           Dotf.Plugin            (createPlugin)
 import           Dotf.Tracking          (trackFile)
 import           Dotf.Tui.Types
 import qualified Graphics.Vty           as V
@@ -98,12 +99,17 @@ doCreateAndAssign = do
       if T.null (T.strip name)
         then stError .= Just ["Plugin name cannot be empty"]
         else do
-          result <- liftIO $ trackFile env fp (Just $ T.strip name)
-          case result of
+          let pname = T.strip name
+          createResult <- liftIO $ createPlugin env pname Nothing
+          case createResult of
             Left err -> stError .= Just [show err]
             Right () -> do
-              stPopup .= Nothing
-              stAssignEditing .= False
-              stFocus .= FTracked
-              st' <- liftIO $ syncAll st
-              put st'
+              result <- liftIO $ trackFile env fp (Just pname)
+              case result of
+                Left err -> stError .= Just [show err]
+                Right () -> do
+                  stPopup .= Nothing
+                  stAssignEditing .= False
+                  stFocus .= FTracked
+                  st' <- liftIO $ syncAll st
+                  put st'

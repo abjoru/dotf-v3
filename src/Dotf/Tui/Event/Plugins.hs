@@ -17,11 +17,13 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Plugins tab.
 handlePluginsEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- Navigation
-handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = navList (V.EvKey V.KDown [])
-handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = navList (V.EvKey V.KUp [])
-handlePluginsEvent (VtyEvent ev@(V.EvKey V.KDown []))     = navList ev
-handlePluginsEvent (VtyEvent ev@(V.EvKey V.KUp []))       = navList ev
+-- Navigation (vi-enabled)
+handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'j') [])) = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'k') [])) = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'g') [])) = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey (V.KChar 'G') [])) = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey V.KDown []))        = navList ev
+handlePluginsEvent (VtyEvent ev@(V.EvKey V.KUp []))          = navList ev
 
 -- n: new plugin (external editor)
 handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
@@ -82,12 +84,12 @@ handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
 
 handlePluginsEvent _ = pure ()
 
--- | Navigate plugin list.
+-- | Navigate plugin list (vi keys enabled).
 navList :: V.Event -> EventM RName State ()
 navList ev = do
   f <- use stFocus
   case f of
-    FPluginList -> zoom stPluginListW $ L.handleListEvent ev
+    FPluginList -> zoom stPluginListW $ L.handleListEventVi L.handleListEvent ev
     _           -> pure ()
 
 -- | Get currently selected plugin.

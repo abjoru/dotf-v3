@@ -14,7 +14,7 @@ import           Dotf.Tui.Tab.Plugins  (drawPluginsTab)
 import           Dotf.Tui.Tab.Profiles (drawProfilesTab)
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
-import           Dotf.Tui.Widgets      (helpBar, statusBar, tabBar)
+import           Dotf.Tui.Widgets      (helpBar, tabBar)
 import           Dotf.Types            (GitEnv, PluginName)
 import           Lens.Micro            ((^.))
 
@@ -52,9 +52,7 @@ drawUI st = popupLayer ++ [mainLayer]
       [ tabBar st
       , B.hBorder
       , tabContent st
-      , B.hBorder
-      , statusBar st
-      , helpBar st
+      , B.border $ helpBar st
       ]
     popupLayer = case st ^. stError of
       Just msgs -> [errorDialog msgs]

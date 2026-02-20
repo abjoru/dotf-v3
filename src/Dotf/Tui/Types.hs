@@ -312,7 +312,7 @@ syncDotfiles st = do
       untrk    = either (const []) id untrkE
       plugins  = _pcPlugins pcfg
       filt     = if st ^. stFilterActive
-                 then Just (T.pack $ unlines $ E.getEditContents (st ^. stFilterEditor))
+                 then Just (T.pack $ concat $ E.getEditContents (st ^. stFilterEditor))
                  else Nothing
 
   stagedStatuses <- mapM (checkStatus env) staged
