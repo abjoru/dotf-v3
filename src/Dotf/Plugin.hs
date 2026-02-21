@@ -4,6 +4,8 @@ module Dotf.Plugin (
   checkRemoveSafety,
   validatePaths,
 
+  managedPaths,
+
   -- * IO
   listPlugins,
   pluginInfo,
@@ -167,7 +169,7 @@ installPlugins env names = do
             let allToInstall = filter (`notElem` _lsInstalledPlugins st) resolved
                 allInstalled = _lsInstalledPlugins st ++ allToInstall
                 allPaths = concatMap (pluginPathsFor cfg) allInstalled
-                sparseTargets = ".config/dotf/" : allPaths
+                sparseTargets = managedPaths ++ allPaths
             result <- gitSparseCheckoutSet env sparseTargets
             case result of
               Left err -> pure $ Left err
@@ -191,7 +193,7 @@ removePlugins env names = do
           Right () -> do
             let remaining = filter (`notElem` names) (_lsInstalledPlugins st)
                 allPaths = concatMap (pluginPathsFor cfg) remaining
-                sparseTargets = ".config/dotf/" : allPaths
+                sparseTargets = managedPaths ++ allPaths
             result <- gitSparseCheckoutSet env sparseTargets
             case result of
               Left err -> pure $ Left err
@@ -206,6 +208,10 @@ removePlugins env names = do
 
 matchesPlugin :: Plugin -> FilePath -> Bool
 matchesPlugin plugin fp = any (`isSubpathOf` fp) (_pluginPaths plugin)
+
+-- | Paths always included in sparse checkout regardless of profile.
+managedPaths :: [FilePath]
+managedPaths = [".config/dotf/", ".gitignore"]
 
 pluginPathsFor :: PluginConfig -> PluginName -> [FilePath]
 pluginPathsFor cfg name =

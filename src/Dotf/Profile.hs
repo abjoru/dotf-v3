@@ -17,7 +17,7 @@ import qualified Data.Text       as T
 import           Dotf.Config
 import           Dotf.Git
 import           Dotf.Path       (isSubpathOf)
-import           Dotf.Plugin     (resolveDependencies)
+import           Dotf.Plugin     (managedPaths, resolveDependencies)
 import           Dotf.State
 import           Dotf.Types
 
@@ -126,7 +126,7 @@ activateProfile env name = do
                   Left err -> pure $ Left err
                   Right resolved -> do
                     let allPaths = concatMap (getPaths pcfg) resolved
-                        sparseTargets = ".config/dotf/" : allPaths
+                        sparseTargets = managedPaths ++ allPaths
                     initResult <- gitSparseCheckoutInit env
                     case initResult of
                       Left err -> pure $ Left err
