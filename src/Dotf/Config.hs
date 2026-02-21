@@ -6,6 +6,7 @@ module Dotf.Config (
   defaultPluginConfig,
   defaultProfileConfig,
   validatePluginConfig,
+  scopePaths,
 ) where
 
 import qualified Data.Map.Strict  as Map
@@ -77,3 +78,10 @@ validatePluginConfig cfg = go Map.empty allPaths
       case Map.lookup path seen of
         Just other -> Left $ PathConflict name other path
         Nothing    -> go (Map.insert path name seen) rest
+
+-- | Collect all plugin + watchlist paths for scoped operations.
+scopePaths :: PluginConfig -> [RelPath]
+scopePaths pcfg =
+  let plugPaths = concatMap _pluginPaths (Map.elems (_pcPlugins pcfg))
+      wlPaths'  = _wlPaths (_pcWatchlist pcfg)
+  in plugPaths ++ wlPaths'

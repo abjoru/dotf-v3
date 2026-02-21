@@ -443,7 +443,10 @@ runPull env = do
 
 runStatus :: GitEnv -> IO ()
 runStatus env = do
-  result <- gitStatus env
+  pcfgE <- loadPluginConfig env
+  let pcfg = either (const defaultPluginConfig) id pcfgE
+      paths = scopePaths pcfg
+  result <- gitStatus env paths
   case result of
     Left err -> handleError err
     Right s  -> putStr s

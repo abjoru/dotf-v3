@@ -588,13 +588,6 @@ buildFileCache :: [RelPath] -> Map.Map PluginName Plugin -> Map.Map PluginName [
 buildFileCache tracked plugins =
   Map.map (\p -> filter (\fp -> any (`isSubpathOf` fp) (_pluginPaths p)) tracked) plugins
 
--- | Collect all plugin + watchlist paths for scoped untracked scan.
-scopePaths :: PluginConfig -> [RelPath]
-scopePaths pcfg =
-  let plugPaths = concatMap _pluginPaths (Map.elems (_pcPlugins pcfg))
-      wlPaths'  = _wlPaths (_pcWatchlist pcfg)
-  in plugPaths ++ wlPaths'
-
 -- | Run three IO actions concurrently.
 concurrently3 :: IO a -> IO b -> IO c -> IO (a, b, c)
 concurrently3 a b c = do

@@ -142,13 +142,25 @@ gitAdd env fp = runGit env ["add", "-f", fp]
 gitRmCached :: GitEnv -> FilePath -> IO (Either DotfError ())
 gitRmCached env fp = runGit env ["rm", "--cached", fp]
 
--- | Stage a file (alias for gitAdd).
+-- | Stage a file: tries 'git add', then 'git rm -f' for deletions.
 gitStage :: GitEnv -> FilePath -> IO (Either DotfError ())
-gitStage = gitAdd
+gitStage env fp = do
+  result <- gitAdd env fp
+  case result of
+    Right () -> pure (Right ())
+    Left _   -> do
+      rmResult <- runGit env ["rm", "-f", fp]
+      case rmResult of
+        Right () -> pure (Right ())
+        Left _   -> pure result  -- return original add error
 
--- | Unstage a file.
+-- | Unstage a file. Falls back to 'rm --cached' if reset fails.
 gitUnstage :: GitEnv -> FilePath -> IO (Either DotfError ())
-gitUnstage env fp = runGit env ["reset", "--", fp]
+gitUnstage env fp = do
+  result <- runGit env ["reset", "--", fp]
+  case result of
+    Right () -> pure (Right ())
+    Left _   -> runGit env ["rm", "--cached", fp]
 
 --------------------
 -- Commits + sync --
@@ -220,9 +232,9 @@ gitSparseCheckoutDisable env = runGit env ["sparse-checkout", "disable"]
 -- Status + diff --
 -------------------
 
--- | Get git status.
-gitStatus :: GitEnv -> IO (Either DotfError String)
-gitStatus env = runGitOutput env ["status", "-sb"]
+-- | Get git status, optionally scoped to specific paths.
+gitStatus :: GitEnv -> [FilePath] -> IO (Either DotfError String)
+gitStatus env paths = runGitOutput env (["status", "-sb"] ++ ["--" | not (null paths)] ++ paths)
 
 -- | Get full diff.
 gitDiff :: GitEnv -> IO (Either DotfError String)

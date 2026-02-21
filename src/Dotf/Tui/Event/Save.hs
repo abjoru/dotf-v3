@@ -31,7 +31,7 @@ handleSaveEvent (VtyEvent (V.EvKey (V.KChar '\t') [])) = do
     FSaveEditor -> stFocus .= FSaveList
     _           -> pure ()
 
--- Space: toggle file selection (in list focus)
+-- Space: toggle file selection (list focus only)
 handleSaveEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = do
   f <- use stFocus
   case f of
@@ -43,14 +43,9 @@ handleSaveEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) = do
           let toggled = item { _siSelected = not (_siSelected item) }
               items = L.listElements sl
               items' = items V.// [(idx, toggled)]
-          stSaveItems .= L.list RSaveList items' 1
+          stSaveItems .= L.listMoveTo idx (L.list RSaveList items' 1)
+    FSaveEditor -> zoom stCommitEditor $ E.handleEditorEvent (VtyEvent (V.EvKey (V.KChar ' ') []))
     _ -> pure ()
-
--- j/k navigation in list
-handleSaveEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = navSave (V.EvKey V.KDown [])
-handleSaveEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = navSave (V.EvKey V.KUp [])
-handleSaveEvent (VtyEvent ev@(V.EvKey V.KDown []))     = navSave ev
-handleSaveEvent (VtyEvent ev@(V.EvKey V.KUp []))       = navSave ev
 
 -- Enter: commit + push
 handleSaveEvent (VtyEvent (V.EvKey V.KEnter [])) = do
@@ -60,22 +55,15 @@ handleSaveEvent (VtyEvent (V.EvKey V.KEnter [])) = do
     FSaveList   -> doCommitAndPush
     _           -> pure ()
 
--- Editor events
+-- Fallback: route to focused widget
 handleSaveEvent (VtyEvent ev) = do
   f <- use stFocus
   case f of
     FSaveEditor -> zoom stCommitEditor $ E.handleEditorEvent (VtyEvent ev)
+    FSaveList   -> zoom stSaveItems $ L.handleListEventVi L.handleListEvent ev
     _           -> pure ()
 
 handleSaveEvent _ = pure ()
-
--- | Navigate save list.
-navSave :: V.Event -> EventM RName State ()
-navSave ev = do
-  f <- use stFocus
-  case f of
-    FSaveList -> zoom stSaveItems $ L.handleListEvent ev
-    _         -> pure ()
 
 -- | Commit selected files and push.
 doCommitAndPush :: EventM RName State ()
@@ -88,26 +76,27 @@ doCommitAndPush = do
   if null selected || null (filter (not . null) (lines msg))
     then stError .= Just ["No files selected or empty commit message"]
     else do
-      -- Stage selected, unstage unselected; collect and check errors before commit
+      -- Stage selected, unstage unselected; skip individual failures
       result <- liftIO $ do
-        stageResults <- mapM (\i ->
-          if _siSelected i
-            then gitStage env (_siPath i)
-            else gitUnstage env (_siPath i)
+        -- Stage/unstage, collecting per-file results
+        -- Only change staging state for files whose selection differs from original
+        mapM_ (\i -> case (_siSelected i, _siIsStaged i) of
+          (True,  False) -> gitStage env (_siPath i)    -- user checked unstaged file
+          (False, True)  -> gitUnstage env (_siPath i)  -- user unchecked staged file
+          _              -> pure (Right ())             -- no change needed
           ) items
-        case sequence stageResults of
+        -- Commit whatever is staged
+        commitResult <- gitCommit env (strip msg)
+        case commitResult of
           Left err -> pure $ Left err
-          Right _  -> do
-            commitResult <- gitCommit env (strip msg)
-            case commitResult of
-              Left err -> pure $ Left err
-              Right () -> gitPush env
+          Right () -> gitPush env
       case result of
         Left err -> stError .= Just [displayError err]
         Right () -> do
           stPopup .= Nothing
           stFocus .= FTracked
-          st' <- liftIO $ syncDotfiles st
-          put st'
+          st' <- get
+          st'' <- liftIO $ syncDotfiles st'
+          put st''
   where
     strip = reverse . dropWhile (== '\n') . reverse . dropWhile (== '\n')
