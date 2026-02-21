@@ -31,12 +31,19 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = editSelected
 -- d: diff selected file
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'd') [])) = diffSelected
 
--- u: untrack (triggers confirm)
+-- u: untrack (triggers confirm, batch if selected)
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'u') [])) = do
-  mPath <- getSelectedPath
-  case mPath of
-    Nothing -> pure ()
-    Just fp -> stConfirm .= Just ("Untrack " ++ fp ++ "?", ConfirmUntrack fp)
+  st <- get
+  let sel = st ^. stSelected
+  if not (Set.null sel)
+    then let fps = Set.toList sel
+             msg = "Untrack " ++ show (length fps) ++ " files?"
+         in stConfirm .= Just (msg, ConfirmUntrack fps)
+    else do
+      mPath <- getSelectedPath
+      case mPath of
+        Nothing -> pure ()
+        Just fp -> stConfirm .= Just ("Untrack " ++ fp ++ "?", ConfirmUntrack [fp])
 
 -- a: assign trigger (batch if selected, else cursor)
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'a') [])) = do

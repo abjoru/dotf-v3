@@ -33,6 +33,7 @@ dependencies:
 - brick
 - vty
 - text-zipper
+- async
 
 default-extensions:
 - OverloadedStrings

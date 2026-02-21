@@ -8,7 +8,7 @@ import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Text              as T
-import           Dotf.Plugin            (createPlugin, installPlugins)
+import           Dotf.Plugin            (installPlugins)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile, pluginsFile)
@@ -18,23 +18,10 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Plugins tab.
 handlePluginsEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- n: new plugin (external editor)
+-- n: new plugin popup
 handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
   st <- get
-  let env = st ^. stEnv
-  suspendAndResume $ do
-    putStr "Plugin name: "
-    name <- getLine
-    putStr "Description (optional): "
-    desc <- getLine
-    let mDesc = if null desc then Nothing else Just (T.pack desc)
-    result <- createPlugin env (T.pack name) mDesc
-    case result of
-      Left err -> putStrLn $ "Error: " ++ show err
-      Right () -> putStrLn $ "Created plugin: " ++ name
-    putStrLn "Press Enter to continue..."
-    _ <- getLine
-    syncPlugins st
+  put $ openNewPluginPopup st
 
 -- e: edit plugins.yaml
 handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = do

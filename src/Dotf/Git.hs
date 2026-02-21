@@ -122,10 +122,12 @@ gitTrackedUnstaged env = do
   cfg <- gitBare env ["diff", "--name-only"]
   processFileListResult <$> PT.readProcess cfg
 
--- | List untracked files.
-gitUntracked :: GitEnv -> IO (Either DotfError [FilePath])
-gitUntracked env = do
-  cfg <- gitBare env ["ls-files", "--exclude-standard", "--others"]
+-- | List untracked files, optionally scoped to specific paths.
+-- When paths are provided, git only scans those directories (much faster
+-- than scanning all of $HOME).
+gitUntracked :: GitEnv -> [FilePath] -> IO (Either DotfError [FilePath])
+gitUntracked env scopePaths = do
+  cfg <- gitBare env (["ls-files", "--exclude-standard", "--others"] ++ ["--" | not (null scopePaths)] ++ scopePaths)
   processFileListResult <$> PT.readProcess cfg
 
 -------------

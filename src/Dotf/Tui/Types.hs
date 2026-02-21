@@ -32,6 +32,8 @@ module Dotf.Tui.Types (
   openSavePopup,
   openAssignPopup,
   openIgnorePopup,
+  openNewPluginPopup,
+  openNewProfilePopup,
   pathSegments,
 
   -- * Lenses
@@ -43,6 +45,8 @@ module Dotf.Tui.Types (
   stSaveItems, stCommitEditor,
   stAssignFiles, stAssignList, stAssignEditing, stAssignEditor,
   stIgnoreList,
+  stNewPluginName, stNewPluginDesc,
+  stNewProfileName, stNewProfilePlugins,
   stFilterEditor, stFilterActive,
   stConfirm,
   stAhead, stBehind, stAssignedCount, stTotalCount,
@@ -50,27 +54,28 @@ module Dotf.Tui.Types (
   siPath, siSelected, siIsStaged,
 ) where
 
-import qualified Brick.Widgets.Edit as E
-import qualified Brick.Widgets.List as L
-import qualified Data.Map.Strict    as Map
-import           Data.Maybe         (fromMaybe)
-import           Data.Set           (Set)
-import qualified Data.Set           as Set
-import           Data.Text          (Text)
-import qualified Data.Text          as T
-import qualified Data.Vector        as V
+import qualified Brick.Widgets.Edit       as E
+import qualified Brick.Widgets.List       as L
+import           Control.Concurrent.Async (concurrently)
+import qualified Data.Map.Strict          as Map
+import           Data.Maybe               (fromMaybe)
+import           Data.Set                 (Set)
+import qualified Data.Set                 as Set
+import           Data.Text                (Text)
+import qualified Data.Text                as T
+import qualified Data.Vector              as V
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path          (isSubpathOf)
-import           Dotf.Plugin        (listPlugins)
-import           Dotf.Profile       (checkCoverage, listProfiles)
+import           Dotf.Path                (isSubpathOf)
+import           Dotf.Plugin              (listPlugins)
+import           Dotf.Profile             (checkCoverage, listProfiles)
 import           Dotf.State
-import           Dotf.Tracking      (classifyUntracked)
+import           Dotf.Tracking            (classifyUntracked)
 import           Dotf.Types
-import           Lens.Micro         ((&), (.~), (^.))
-import           Lens.Micro.TH      (makeLenses)
-import           System.Directory   (doesPathExist)
-import           System.FilePath    ((</>))
+import           Lens.Micro               ((&), (.~), (^.))
+import           Lens.Micro.TH            (makeLenses)
+import           System.Directory         (doesPathExist)
+import           System.FilePath          ((</>))
 
 -----------
 -- Types --
@@ -92,9 +97,13 @@ data Focus
   | FAssignEditor
   | FIgnoreList
   | FFilterEditor
+  | FNewPluginName
+  | FNewPluginDesc
+  | FNewProfileName
+  | FNewProfilePlugins
   deriving (Eq, Show, Ord)
 
-data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup
+data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup
   deriving (Eq, Show, Ord)
 
 -- | Resource names for Brick widgets.
@@ -111,6 +120,10 @@ data RName
   | RFilterEditor
   | RPluginDetail
   | RProfileDetail
+  | RNewPluginName
+  | RNewPluginDesc
+  | RNewProfileName
+  | RNewProfilePlugins
   deriving (Eq, Show, Ord)
 
 -- | Grouped item in tracked list: headers or file entries.
@@ -144,7 +157,7 @@ data DEvent = Tick
 
 -- | Confirmable actions.
 data ConfirmAction
-  = ConfirmUntrack RelPath
+  = ConfirmUntrack [RelPath]
   | ConfirmDeletePlugin PluginName
   | ConfirmRemovePlugin PluginName
   | ConfirmDeleteProfile ProfileName
@@ -156,58 +169,66 @@ data ConfirmAction
 -----------
 
 data State = State
-  { _stEnv           :: GitEnv
-  , _stPluginConfig  :: PluginConfig
-  , _stProfileConfig :: ProfileConfig
-  , _stLocalState    :: LocalState
-  , _stAllTracked    :: [RelPath]
+  { _stEnv               :: GitEnv
+  , _stPluginConfig      :: PluginConfig
+  , _stProfileConfig     :: ProfileConfig
+  , _stLocalState        :: LocalState
+  , _stAllTracked        :: [RelPath]
 
   -- Navigation
-  , _stTab           :: Tab
-  , _stFocus         :: Focus
-  , _stPopup         :: Maybe Popup
+  , _stTab               :: Tab
+  , _stFocus             :: Focus
+  , _stPopup             :: Maybe Popup
 
   -- Dotfiles tab
-  , _stTrackedList   :: L.List RName GroupItem
-  , _stUntrackedList :: L.List RName UntrackedItem
-  , _stCollapsed     :: Set PluginName
-  , _stSelected      :: Set RelPath
+  , _stTrackedList       :: L.List RName GroupItem
+  , _stUntrackedList     :: L.List RName UntrackedItem
+  , _stCollapsed         :: Set PluginName
+  , _stSelected          :: Set RelPath
 
   -- Plugins tab
-  , _stPluginListW   :: L.List RName (Plugin, Bool)
-  , _stPluginFiles   :: Map.Map PluginName [RelPath]
+  , _stPluginListW       :: L.List RName (Plugin, Bool)
+  , _stPluginFiles       :: Map.Map PluginName [RelPath]
 
   -- Profiles tab
-  , _stProfileListW  :: L.List RName (Profile, Bool)
+  , _stProfileListW      :: L.List RName (Profile, Bool)
 
   -- Save popup
-  , _stSaveItems     :: L.List RName SaveItem
-  , _stCommitEditor  :: E.Editor String RName
+  , _stSaveItems         :: L.List RName SaveItem
+  , _stCommitEditor      :: E.Editor String RName
 
   -- Assign popup
-  , _stAssignFiles   :: [RelPath]
-  , _stAssignList    :: L.List RName (PluginName, Bool)
-  , _stAssignEditing :: Bool
-  , _stAssignEditor  :: E.Editor String RName
+  , _stAssignFiles       :: [RelPath]
+  , _stAssignList        :: L.List RName (PluginName, Bool)
+  , _stAssignEditing     :: Bool
+  , _stAssignEditor      :: E.Editor String RName
 
   -- Ignore popup
-  , _stIgnoreList    :: L.List RName FilePath
+  , _stIgnoreList        :: L.List RName FilePath
+
+  -- New plugin popup
+  , _stNewPluginName     :: E.Editor String RName
+  , _stNewPluginDesc     :: E.Editor String RName
+
+  -- New profile popup
+  , _stNewProfileName    :: E.Editor String RName
+  , _stNewProfilePlugins :: L.List RName (PluginName, Bool)
 
   -- Filter
-  , _stFilterEditor  :: E.Editor String RName
-  , _stFilterActive  :: Bool
+  , _stFilterEditor      :: E.Editor String RName
+  , _stFilterActive      :: Bool
 
   -- Confirm dialog
-  , _stConfirm       :: Maybe (String, ConfirmAction)
+  , _stConfirm           :: Maybe (String, ConfirmAction)
 
   -- Status bar
-  , _stAhead         :: Int
-  , _stBehind        :: Int
-  , _stAssignedCount :: Int
-  , _stTotalCount    :: Int
+  , _stAhead             :: Int
+  , _stBehind            :: Int
+  , _stAssignedCount     :: Int
+  , _stTotalCount        :: Int
 
   -- Error
-  , _stError         :: Maybe [String]
+  , _stError             :: Maybe [String]
   }
 
 makeLenses ''SaveItem
@@ -220,10 +241,9 @@ makeLenses ''State
 -- | Build initial TUI state from a GitEnv.
 buildState :: GitEnv -> IO State
 buildState env = do
-  pcfgE  <- loadPluginConfig env
-  prfE   <- loadProfileConfig env
-  lsE    <- loadLocalState env
-  (ah, bh) <- gitAheadBehind env
+  -- Load configs first (fast YAML reads, needed to scope untracked scan)
+  (pcfgE, prfE, lsE) <- concurrently3
+    (loadPluginConfig env) (loadProfileConfig env) (loadLocalState env)
 
   let pcfg = either (const defaultPluginConfig) id pcfgE
       prf  = either (const defaultProfileConfig) id prfE
@@ -232,12 +252,14 @@ buildState env = do
                ++ either (\e -> [displayError e]) (const []) prfE
                ++ either (\e -> [displayError e]) (const []) lsE
       initError = if null cfgErrors then Nothing else Just cfgErrors
+      untrackedScope = scopePaths pcfg
 
-  -- Tracked files
-  trackedE  <- gitTracked env
-  stagedE   <- gitTrackedStaged env
-  unstagedE <- gitTrackedUnstaged env
-  untrkE    <- gitUntracked env
+  -- Run git queries in parallel (untracked scoped to plugin + watchlist paths)
+  ((trackedE, stagedE), (unstagedE, untrkE), (ah, bh)) <-
+    concurrently3
+      (concurrently (gitTracked env) (gitTrackedStaged env))
+      (concurrently (gitTrackedUnstaged env) (gitUntracked env untrackedScope))
+      (gitAheadBehind env)
 
   let tracked  = either (const []) id trackedE
       staged   = either (const []) id stagedE
@@ -286,6 +308,10 @@ buildState env = do
     , _stAssignEditing = False
     , _stAssignEditor  = E.editor RAssignEditor (Just 1) ""
     , _stIgnoreList    = L.list RIgnoreList V.empty 1
+    , _stNewPluginName    = E.editor RNewPluginName (Just 1) ""
+    , _stNewPluginDesc    = E.editor RNewPluginDesc (Just 1) ""
+    , _stNewProfileName    = E.editor RNewProfileName (Just 1) ""
+    , _stNewProfilePlugins = L.list RNewProfilePlugins V.empty 1
     , _stFilterEditor  = E.editor RFilterEditor (Just 1) ""
     , _stFilterActive  = False
     , _stConfirm       = Nothing
@@ -314,10 +340,11 @@ syncDotfiles st = do
   let env  = st ^. stEnv
       pcfg = st ^. stPluginConfig
 
-  trackedE  <- gitTracked env
-  stagedE   <- gitTrackedStaged env
-  unstagedE <- gitTrackedUnstaged env
-  untrkE    <- gitUntracked env
+  ((trackedE, stagedE), (unstagedE, untrkE), (ah, bh)) <-
+    concurrently3
+      (concurrently (gitTracked env) (gitTrackedStaged env))
+      (concurrently (gitTrackedUnstaged env) (gitUntracked env (scopePaths pcfg)))
+      (gitAheadBehind env)
 
   let tracked  = either (const []) id trackedE
       staged   = either (const []) id stagedE
@@ -334,8 +361,6 @@ syncDotfiles st = do
   let groupedList = buildGroupedList plugins tracked stagedStatuses unstagedStatuses (st ^. stCollapsed) filt
       untrkList   = buildUntrackedList plugins (_wlPaths $ _pcWatchlist pcfg) untrk
       (assigned, _) = checkCoverage tracked plugins
-
-  (ah, bh) <- gitAheadBehind env
 
   pure $ st
     & stAllTracked    .~ tracked
@@ -513,6 +538,25 @@ openIgnorePopup mPath st =
     & stPopup      .~ Just IgnorePopup
     & stFocus      .~ FIgnoreList
 
+-- | Open new plugin popup with empty editors.
+openNewPluginPopup :: State -> State
+openNewPluginPopup st = st
+  & stNewPluginName .~ E.editor RNewPluginName (Just 1) ""
+  & stNewPluginDesc .~ E.editor RNewPluginDesc (Just 1) ""
+  & stPopup         .~ Just NewPluginPopup
+  & stFocus         .~ FNewPluginName
+
+-- | Open new profile popup with plugin toggle list.
+openNewProfilePopup :: State -> State
+openNewProfilePopup st =
+  let plugins = Map.toAscList $ _pcPlugins (st ^. stPluginConfig)
+      items   = map (\(n, _) -> (n, False)) plugins
+  in st
+    & stNewProfileName    .~ E.editor RNewProfileName (Just 1) ""
+    & stNewProfilePlugins .~ L.list RNewProfilePlugins (V.fromList items) 1
+    & stPopup             .~ Just NewProfilePopup
+    & stFocus             .~ FNewProfileName
+
 -- | Split a path into cumulative prefix segments.
 -- e.g. ".some/dir/file.txt" -> [".some", ".some/dir", ".some/dir/file.txt"]
 pathSegments :: FilePath -> [FilePath]
@@ -543,3 +587,16 @@ checkStatus env fp = do
 buildFileCache :: [RelPath] -> Map.Map PluginName Plugin -> Map.Map PluginName [RelPath]
 buildFileCache tracked plugins =
   Map.map (\p -> filter (\fp -> any (`isSubpathOf` fp) (_pluginPaths p)) tracked) plugins
+
+-- | Collect all plugin + watchlist paths for scoped untracked scan.
+scopePaths :: PluginConfig -> [RelPath]
+scopePaths pcfg =
+  let plugPaths = concatMap _pluginPaths (Map.elems (_pcPlugins pcfg))
+      wlPaths'  = _wlPaths (_pcWatchlist pcfg)
+  in plugPaths ++ wlPaths'
+
+-- | Run three IO actions concurrently.
+concurrently3 :: IO a -> IO b -> IO c -> IO (a, b, c)
+concurrently3 a b c = do
+  (x, (y, z)) <- concurrently a (concurrently b c)
+  pure (x, y, z)

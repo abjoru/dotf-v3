@@ -2,24 +2,27 @@ module Dotf.Tui.Events (
   handleEvent,
 ) where
 
-import           Brick                   (BrickEvent (..), halt)
-import           Brick.Types             (EventM, get, put)
-import qualified Brick.Widgets.Edit      as E
-import           Control.Monad.IO.Class  (liftIO)
-import           Dotf.Plugin             (deletePlugin, removePlugins)
-import           Dotf.Profile            (deactivateProfile, deleteProfile)
-import           Dotf.Tracking           (untrackFile)
-import           Dotf.Tui.Event.Assign   (handleAssignEvent)
-import           Dotf.Tui.Event.Dotfiles (handleDotfilesEvent)
-import           Dotf.Tui.Event.Ignore   (handleIgnoreEvent)
-import           Dotf.Tui.Event.Plugins  (handlePluginsEvent)
-import           Dotf.Tui.Event.Profiles (handleProfilesEvent)
-import           Dotf.Tui.Event.Save     (handleSaveEvent)
+import           Brick                     (BrickEvent (..), halt)
+import           Brick.Types               (EventM, get, put)
+import qualified Brick.Widgets.Edit        as E
+import           Control.Monad.IO.Class    (liftIO)
+import qualified Data.Set                  as Set
+import           Dotf.Plugin               (deletePlugin, removePlugins)
+import           Dotf.Profile              (deactivateProfile, deleteProfile)
+import           Dotf.Tracking             (untrackFile)
+import           Dotf.Tui.Event.Assign     (handleAssignEvent)
+import           Dotf.Tui.Event.Dotfiles   (handleDotfilesEvent)
+import           Dotf.Tui.Event.Ignore     (handleIgnoreEvent)
+import           Dotf.Tui.Event.NewPlugin  (handleNewPluginEvent)
+import           Dotf.Tui.Event.NewProfile (handleNewProfileEvent)
+import           Dotf.Tui.Event.Plugins    (handlePluginsEvent)
+import           Dotf.Tui.Event.Profiles   (handleProfilesEvent)
+import           Dotf.Tui.Event.Save       (handleSaveEvent)
 import           Dotf.Tui.Types
-import           Dotf.Types              (displayError)
-import qualified Graphics.Vty            as V
-import           Lens.Micro              ((^.))
-import           Lens.Micro.Mtl          (use, zoom, (.=))
+import           Dotf.Types                (displayError)
+import qualified Graphics.Vty              as V
+import           Lens.Micro                ((^.))
+import           Lens.Micro.Mtl            (use, zoom, (.=))
 
 -- | Top-level event dispatcher.
 -- Priority: error > confirm > popup > global keys > tab handler
@@ -39,10 +42,12 @@ handleEvent ev = do
     (_, Just _, _) -> handleConfirm ev
 
     -- Popup dispatch
-    (_, _, Just SavePopup)   -> handleSaveEvent ev
-    (_, _, Just AssignPopup) -> handleAssignEvent ev
-    (_, _, Just IgnorePopup) -> handleIgnoreEvent ev
-    (_, _, Just FilterPopup) -> handleFilterPopup ev
+    (_, _, Just SavePopup)       -> handleSaveEvent ev
+    (_, _, Just AssignPopup)     -> handleAssignEvent ev
+    (_, _, Just IgnorePopup)     -> handleIgnoreEvent ev
+    (_, _, Just FilterPopup)     -> handleFilterPopup ev
+    (_, _, Just NewPluginPopup)  -> handleNewPluginEvent ev
+    (_, _, Just NewProfilePopup) -> handleNewProfileEvent ev
 
     -- Global keys (no popup active)
     _ -> handleGlobal ev
@@ -75,15 +80,17 @@ handleConfirm _ = pure ()
 
 -- | Execute a confirmed action.
 executeConfirm :: ConfirmAction -> EventM RName State ()
-executeConfirm (ConfirmUntrack fp) = do
+executeConfirm (ConfirmUntrack fps) = do
   st <- get
   let env = st ^. stEnv
-  result <- liftIO $ untrackFile env fp
-  case result of
-    Left err -> stError .= Just [displayError err]
-    Right () -> do
-      st' <- liftIO $ syncAll st
-      put st'
+  results <- liftIO $ mapM (untrackFile env) fps
+  case [e | Left e <- results] of
+    (err:_) -> stError .= Just [displayError err]
+    []      -> do
+      stSelected .= Set.empty
+      st' <- get
+      st'' <- liftIO $ syncAll st'
+      put st''
 executeConfirm (ConfirmDeletePlugin name) = do
   st <- get
   let env = st ^. stEnv

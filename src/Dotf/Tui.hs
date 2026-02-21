@@ -42,6 +42,13 @@ chooseCursor st = case st ^. stPopup of
   Just AssignPopup | st ^. stFocus == FAssignEditor -> showCursorNamed RAssignEditor
   Just IgnorePopup  -> const Nothing
   Just FilterPopup  -> showCursorNamed RFilterEditor
+  Just NewPluginPopup -> case st ^. stFocus of
+    FNewPluginName -> showCursorNamed RNewPluginName
+    FNewPluginDesc -> showCursorNamed RNewPluginDesc
+    _              -> const Nothing
+  Just NewProfilePopup -> case st ^. stFocus of
+    FNewProfileName -> showCursorNamed RNewProfileName
+    _               -> const Nothing
   _                 -> neverShowCursor st
 
 -- | Main draw function. Returns popup layer over main layer.
@@ -59,11 +66,13 @@ drawUI st = popupLayer ++ [mainLayer]
       Nothing -> case st ^. stConfirm of
         Just (msg, _) -> [confirmDialog msg]
         Nothing -> case st ^. stPopup of
-          Just SavePopup   -> [drawSavePopup st]
-          Just AssignPopup -> [drawAssignPopup st]
-          Just IgnorePopup -> [drawIgnorePopup st]
-          Just FilterPopup -> [drawFilterPopup st]
-          Nothing          -> []
+          Just SavePopup       -> [drawSavePopup st]
+          Just AssignPopup     -> [drawAssignPopup st]
+          Just IgnorePopup     -> [drawIgnorePopup st]
+          Just FilterPopup     -> [drawFilterPopup st]
+          Just NewPluginPopup  -> [drawNewPluginPopup st]
+          Just NewProfilePopup -> [drawNewProfilePopup st]
+          Nothing              -> []
 
 -- | Render tab body.
 tabContent :: State -> Widget RName
@@ -160,3 +169,32 @@ drawFilterPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus 
     [ withAttr attrBold $ str "Filter pattern:"
     , vLimit 1 $ E.renderEditor (str . unlines) True (st ^. stFilterEditor)
     ]
+
+-- | New plugin popup.
+drawNewPluginPopup :: State -> Widget RName
+drawNewPluginPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " New Plugin ") $
+  hLimit 50 $ padAll 1 $ vBox
+    [ withAttr attrBold $ str "Name:"
+    , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewPluginName) (st ^. stNewPluginName)
+    , str ""
+    , withAttr attrBold $ str "Description (optional):"
+    , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewPluginDesc) (st ^. stNewPluginDesc)
+    ]
+
+-- | New profile popup.
+drawNewProfilePopup :: State -> Widget RName
+drawNewProfilePopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " New Profile ") $
+  hLimit 50 $ vLimit 20 $ padAll 1 $ vBox
+    [ withAttr attrBold $ str "Name:"
+    , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewProfileName) (st ^. stNewProfileName)
+    , str ""
+    , withAttr attrBold $ str "Plugins:"
+    , vLimit 10 $ L.renderList renderToggleItem (st ^. stFocus == FNewProfilePlugins) (st ^. stNewProfilePlugins)
+    ]
+
+-- | Render a toggle list item (plugin selection).
+renderToggleItem :: Bool -> (PluginName, Bool) -> Widget RName
+renderToggleItem sel (name, checked) =
+  let icon = if checked then "[x] " else "[ ] "
+      a = if sel then attrSelItem else attrItem
+  in withAttr a $ str $ icon ++ show name

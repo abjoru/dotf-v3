@@ -8,7 +8,7 @@ import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Text              as T
-import           Dotf.Profile           (activateProfile, createProfile)
+import           Dotf.Profile           (activateProfile)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile, profilesFile)
@@ -18,23 +18,10 @@ import           Lens.Micro.Mtl         (use, zoom, (.=))
 
 -- | Handle events in Profiles tab.
 handleProfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
--- n: new profile
+-- n: new profile popup
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'n') [])) = do
   st <- get
-  let env = st ^. stEnv
-  suspendAndResume $ do
-    putStr "Profile name: "
-    name <- getLine
-    putStr "Plugins (comma-separated): "
-    pluginsStr <- getLine
-    let plugins = map T.strip $ T.splitOn "," (T.pack pluginsStr)
-    result <- createProfile env (T.pack name) plugins
-    case result of
-      Left err -> putStrLn $ "Error: " ++ show err
-      Right () -> putStrLn $ "Created profile: " ++ name
-    putStrLn "Press Enter to continue..."
-    _ <- getLine
-    syncProfiles st
+  put $ openNewProfilePopup st
 
 -- e: edit profiles.yaml
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = do

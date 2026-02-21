@@ -17,7 +17,6 @@ module Dotf.Tracking (
 import           Control.Exception (IOException, try)
 import           Control.Monad     (foldM)
 import qualified Data.Map.Strict   as Map
-import qualified Data.Set          as Set
 import qualified Data.Text         as T
 import           Dotf.Config
 import           Dotf.Git
@@ -63,13 +62,11 @@ trackFile env path mPlugin = do
       Nothing       -> pure $ Right ()
       Just plugName -> reassignFiles env [relPath] plugName
 
--- | Assign files to a plugin, resolving cross-plugin path conflicts.
--- For each other plugin, directory-level paths that overlap with the reassigned
--- files are expanded to individual tracked files (minus the reassigned ones).
+-- | Assign files to a plugin, checking for cross-plugin path conflicts.
+-- Returns PathConflict if any file is already covered by another plugin.
 reassignFiles :: GitEnv -> [RelPath] -> PluginName -> IO (Either DotfError ())
 reassignFiles env paths plugName = do
   let relPaths = map (normalizePath (_geHome env)) paths
-  -- Git add each file
   addResult <- foldM (\acc fp -> case acc of
     Left err -> pure $ Left err
     Right () -> gitAdd env fp
@@ -82,44 +79,31 @@ reassignFiles env paths plugName = do
         Left err -> pure $ Left err
         Right cfg -> case Map.lookup plugName (_pcPlugins cfg) of
           Nothing -> pure $ Left $ PluginNotFound plugName
-          Just _  -> do
-            trackedResult <- gitTracked env
-            case trackedResult of
-              Left err -> pure $ Left err
-              Right allTracked -> do
-                let fileSet = Set.fromList relPaths
-                    -- Resolve conflicts in all other plugins
-                    updatedPlugins = Map.mapWithKey (\k p ->
-                      if k == plugName then p
-                      else p { _pluginPaths = concatMap (splitPath fileSet allTracked) (_pluginPaths p) }
-                      ) (_pcPlugins cfg)
-                    -- Add paths to target plugin (no consolidation — avoids
-                    -- collapsing siblings into a parent that overlaps other plugins)
-                    target = updatedPlugins Map.! plugName
-                    existing = _pluginPaths target
-                    -- Drop existing paths already covered by new ones
-                    kept = filter (\e -> not $ any (`isSubpathOf` e) relPaths) existing
-                    -- Only add new paths not already covered by kept
-                    toAdd = filter (\p -> not $ any (`isSubpathOf` p) kept) relPaths
-                    target' = kept ++ toAdd
-                    finalPlugins = Map.insert plugName (target { _pluginPaths = target' }) updatedPlugins
-                    newCfg = cfg { _pcPlugins = finalPlugins }
-                savePluginConfig env newCfg
-                pure $ Right ()
+          Just _  -> case findConflict relPaths plugName (_pcPlugins cfg) of
+            Just err -> pure $ Left err
+            Nothing  -> do
+              let target   = (_pcPlugins cfg) Map.! plugName
+                  existing = _pluginPaths target
+                  kept     = filter (\e -> not $ any (`isSubpathOf` e) relPaths) existing
+                  toAdd    = filter (\p -> not $ any (`isSubpathOf` p) kept) relPaths
+                  target'  = kept ++ toAdd
+                  newPlugins = Map.insert plugName (target { _pluginPaths = target' }) (_pcPlugins cfg)
+                  newCfg   = cfg { _pcPlugins = newPlugins }
+              savePluginConfig env newCfg
+              pure $ Right ()
 
--- | Resolve a single plugin path against a set of reassigned files.
--- Returns replacement paths (empty list = remove, singleton = keep, multiple = expanded).
-splitPath :: Set.Set RelPath -> [RelPath] -> RelPath -> [RelPath]
-splitPath fileSet allTracked pluginPath
-  -- A reassigned path is parent of (or equal to) this plugin path: remove
-  | any (\f -> f `isSubpathOf` pluginPath) (Set.toList fileSet) = []
-  -- This plugin path is parent of some reassigned file: expand and exclude
-  | any (pluginPath `isSubpathOf`) (Set.toList fileSet) =
-      let coveredFiles = filter (pluginPath `isSubpathOf`) allTracked
-          remaining = filter (`Set.notMember` fileSet) coveredFiles
-      in remaining
-  -- No conflict
-  | otherwise = [pluginPath]
+-- | Check if any path is already covered by a different plugin.
+findConflict :: [RelPath] -> PluginName -> Map.Map PluginName Plugin -> Maybe DotfError
+findConflict paths target plugins =
+  let others = Map.toList $ Map.delete target plugins
+      check fp = case [ owner | (owner, p) <- others
+                       , any (\pp -> pp `isSubpathOf` fp || fp `isSubpathOf` pp) (_pluginPaths p)
+                       ] of
+                   (owner:_) -> Just $ PathConflict target owner fp
+                   []        -> Nothing
+  in case concatMap (\fp -> maybe [] (:[]) (check fp)) paths of
+       (err:_) -> Just err
+       []      -> Nothing
 
 -- | Untrack a file: git rm --cached + remove from plugin.
 untrackFile :: GitEnv -> RelPath -> IO (Either DotfError ())
@@ -159,16 +143,16 @@ discoverUntracked env = do
       case stResult of
         Left err -> pure $ Left err
         Right st -> do
-          untrackedResult <- gitUntracked env
+          let installedPlugins = Map.filterWithKey
+                    (\k _ -> k `elem` _lsInstalledPlugins st)
+                    (_pcPlugins cfg)
+              wlPaths' = _wlPaths (_pcWatchlist cfg)
+              scope = concatMap _pluginPaths (Map.elems installedPlugins) ++ wlPaths'
+          untrackedResult <- gitUntracked env scope
           case untrackedResult of
             Left err -> pure $ Left err
             Right files -> do
-              -- Only classify against installed plugins
-              let installedPlugins = Map.filterWithKey
-                    (\k _ -> k `elem` _lsInstalledPlugins st)
-                    (_pcPlugins cfg)
-                  wlPaths' = _wlPaths (_pcWatchlist cfg)
-                  (plugScoped, wl) = classifyUntracked files installedPlugins wlPaths'
+              let (plugScoped, wl) = classifyUntracked files installedPlugins wlPaths'
               pure $ Right $ UntrackedReport plugScoped wl
 
 -- | Discover untracked files for a specific plugin.
@@ -181,7 +165,7 @@ discoverPluginUntracked env name = do
       case Map.lookup name (_pcPlugins cfg) of
         Nothing -> pure $ Left $ PluginNotFound name
         Just plugin -> do
-          untrackedResult <- gitUntracked env
+          untrackedResult <- gitUntracked env (_pluginPaths plugin)
           case untrackedResult of
             Left err -> pure $ Left err
             Right files ->

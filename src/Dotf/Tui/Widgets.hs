@@ -45,7 +45,9 @@ helpBar st =
         Just SavePopup   -> (saveHelp1, saveHelp2)
         Just AssignPopup -> (assignHelp1, assignHelp2)
         Just IgnorePopup -> (ignoreHelp1, [])
-        Just FilterPopup -> (filterHelp1, [])
+        Just FilterPopup     -> (filterHelp1, [])
+        Just NewPluginPopup  -> (newPluginHelp1, [])
+        Just NewProfilePopup -> (newProfileHelp1, [])
         Nothing -> case st ^. stTab of
           DotfilesTab -> (dotfilesHelp1, dotfilesHelp2)
           PluginsTab  -> (pluginsHelp1, pluginsHelp2)
@@ -96,6 +98,12 @@ helpBar st =
         ]
       filterHelp1 =
         [ ("Enter", "Apply"), ("Esc", "Cancel")
+        ]
+      newPluginHelp1 =
+        [ ("Tab", "Switch Field"), ("Enter", "Create"), ("Esc", "Cancel")
+        ]
+      newProfileHelp1 =
+        [ ("Tab", "Switch Field"), ("Space", "Toggle"), ("Enter", "Create"), ("Esc", "Cancel")
         ]
 
 -- | Render a pane title, highlighted if focused.
