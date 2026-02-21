@@ -6,31 +6,23 @@ module TestUtils (
 import           Dotf.Git
 import           Dotf.Types
 import           Dotf.Utils       (metadataDir, pluginsFile, profilesFile)
-import           System.Directory (createDirectoryIfMissing, doesDirectoryExist,
-                                   removeDirectoryRecursive)
+import           System.Directory (createDirectoryIfMissing)
 import           System.FilePath  ((</>))
+import           System.IO.Temp   (withSystemTempDirectory)
 import           Test.Hspec
 
--- | Create a temp environment with a bare repo for testing.
+-- | Create an isolated temp environment with a bare repo for testing.
 withTestEnv :: (GitEnv -> IO ()) -> IO ()
-withTestEnv action = do
-  let tmpDir = "/tmp/dotf-test-integration"
-  -- Clean up any previous test
-  exists <- doesDirectoryExist tmpDir
-  if exists then removeDirectoryRecursive tmpDir else pure ()
-  createDirectoryIfMissing True tmpDir
-  let env = GitEnv tmpDir
-  -- Initialize bare repo
-  result <- gitInitBare env
-  case result of
-    Left err -> expectationFailure $ "Failed to init bare repo: " ++ show err
-    Right () -> do
-      -- Configure git user for CI environments
-      _ <- runGit env ["config", "user.email", "test@test.com"]
-      _ <- runGit env ["config", "user.name", "Test"]
-      action env
-      -- Cleanup
-      removeDirectoryRecursive tmpDir
+withTestEnv action =
+  withSystemTempDirectory "dotf-test" $ \tmpDir -> do
+    let env = GitEnv tmpDir
+    result <- gitInitBare env
+    case result of
+      Left err -> expectationFailure $ "Failed to init bare repo: " ++ show err
+      Right () -> do
+        _ <- runGit env ["config", "user.email", "test@test.com"]
+        _ <- runGit env ["config", "user.name", "Test"]
+        action env
 
 -- | Create test files and scaffold metadata.
 setupTestFiles :: GitEnv -> IO ()

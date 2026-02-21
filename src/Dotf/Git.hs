@@ -43,7 +43,10 @@ module Dotf.Git (
 
   -- * Queries
   hasBareRepo,
-  gitAheadBehind,
+  hasMergeHead,
+  gitConflictFiles,
+  gitAhead,
+  gitBehind,
 
   -- * Result processing
   processFileListResult,
@@ -60,7 +63,8 @@ import qualified Data.Text.Encoding         as TE
 import           Data.Text.Encoding.Error   (lenientDecode)
 import           Dotf.Types
 import           Dotf.Utils                 (dotfGitDir, gitDirArg, workTreeArg)
-import           System.Directory           (doesDirectoryExist, doesPathExist)
+import           System.Directory           (doesDirectoryExist, doesFileExist,
+                                             doesPathExist)
 import           System.FilePath            ((</>))
 import qualified System.Process.Typed       as PT
 
@@ -73,7 +77,7 @@ type ReadProcessResult = (PT.ExitCode, B.ByteString, B.ByteString)
 -- | Run a git command on the bare repo, returning success/failure.
 runGit :: GitEnv -> [String] -> IO (Either DotfError ())
 runGit env args = do
-  cfg <- gitBare env args
+  let cfg = gitBare env args
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
@@ -82,23 +86,23 @@ runGit env args = do
 -- | Run a git command and return stdout.
 runGitOutput :: GitEnv -> [String] -> IO (Either DotfError String)
 runGitOutput env args = do
-  cfg <- gitBare env args
+  let cfg = gitBare env args
   res <- PT.readProcess cfg
   pure $ processStringResult res
 
 -- | Build a process config for a bare repo git command.
-gitBare :: GitEnv -> [String] -> IO (PT.ProcessConfig () () ())
-gitBare env args = do
+gitBare :: GitEnv -> [String] -> PT.ProcessConfig () () ()
+gitBare env args =
   let home = _geHome env
       newArgs = [gitDirArg env, workTreeArg env] ++ args
-  pure $ PT.setWorkingDir home (PT.proc "git" newArgs)
+  in PT.setWorkingDir home (PT.proc "git" newArgs)
 
 -- | Build a process config with output silenced.
-gitBareSilent :: GitEnv -> [String] -> IO (PT.ProcessConfig () () ())
-gitBareSilent env args = do
-  cfg <- gitBare env args
-  pure $ cfg & PT.setStdout PT.nullStream
-             & PT.setStderr PT.nullStream
+gitBareSilent :: GitEnv -> [String] -> PT.ProcessConfig () () ()
+gitBareSilent env args =
+  gitBare env args
+    & PT.setStdout PT.nullStream
+    & PT.setStderr PT.nullStream
 
 ------------------
 -- File listing --
@@ -106,29 +110,25 @@ gitBareSilent env args = do
 
 -- | List all tracked files (index-based so track/untrack reflect immediately).
 gitTracked :: GitEnv -> IO (Either DotfError [FilePath])
-gitTracked env = do
-  cfg <- gitBare env ["ls-files"]
-  processFileListResult <$> PT.readProcess cfg
+gitTracked env =
+  processFileListResult <$> PT.readProcess (gitBare env ["ls-files"])
 
 -- | List staged files.
 gitTrackedStaged :: GitEnv -> IO (Either DotfError [FilePath])
-gitTrackedStaged env = do
-  cfg <- gitBare env ["diff", "--name-only", "--cached"]
-  processFileListResult <$> PT.readProcess cfg
+gitTrackedStaged env =
+  processFileListResult <$> PT.readProcess (gitBare env ["diff", "--name-only", "--cached"])
 
 -- | List unstaged (modified) files.
 gitTrackedUnstaged :: GitEnv -> IO (Either DotfError [FilePath])
-gitTrackedUnstaged env = do
-  cfg <- gitBare env ["diff", "--name-only"]
-  processFileListResult <$> PT.readProcess cfg
+gitTrackedUnstaged env =
+  processFileListResult <$> PT.readProcess (gitBare env ["diff", "--name-only"])
 
 -- | List untracked files, optionally scoped to specific paths.
 -- When paths are provided, git only scans those directories (much faster
 -- than scanning all of $HOME).
 gitUntracked :: GitEnv -> [FilePath] -> IO (Either DotfError [FilePath])
-gitUntracked env scopePaths = do
-  cfg <- gitBare env (["ls-files", "--exclude-standard", "--others"] ++ ["--" | not (null scopePaths)] ++ scopePaths)
-  processFileListResult <$> PT.readProcess cfg
+gitUntracked env scopePaths =
+  processFileListResult <$> PT.readProcess (gitBare env (["ls-files", "--exclude-standard", "--others"] ++ ["--" | not (null scopePaths)] ++ scopePaths))
 
 -------------
 -- Staging --
@@ -214,15 +214,22 @@ gitSparseCheckoutInit env = runGit env ["sparse-checkout", "init", "--no-cone"]
 gitSparseCheckoutSet :: GitEnv -> [FilePath] -> IO (Either DotfError ())
 gitSparseCheckoutSet env paths = runGit env (["sparse-checkout", "set", "--no-cone"] ++ paths)
 
--- | Add paths to sparse checkout.
+-- | Add paths to sparse checkout (read-modify-write via set --no-cone).
+-- git 2.53+ doesn't accept --no-cone on 'add', so we read current patterns,
+-- append new ones, and 'set --no-cone' the full list.
 gitSparseCheckoutAdd :: GitEnv -> [FilePath] -> IO (Either DotfError ())
-gitSparseCheckoutAdd env paths = runGit env (["sparse-checkout", "add", "--no-cone"] ++ paths)
+gitSparseCheckoutAdd env paths = do
+  current <- gitSparseCheckoutList env
+  case current of
+    Left err -> pure $ Left err
+    Right existing ->
+      let merged = existing ++ filter (`notElem` existing) paths
+      in gitSparseCheckoutSet env merged
 
 -- | List current sparse checkout patterns.
 gitSparseCheckoutList :: GitEnv -> IO (Either DotfError [FilePath])
-gitSparseCheckoutList env = do
-  cfg <- gitBare env ["sparse-checkout", "list"]
-  processFileListResult <$> PT.readProcess cfg
+gitSparseCheckoutList env =
+  processFileListResult <$> PT.readProcess (gitBare env ["sparse-checkout", "list"])
 
 -- | Disable sparse checkout (full checkout).
 gitSparseCheckoutDisable :: GitEnv -> IO (Either DotfError ())
@@ -251,7 +258,7 @@ gitDiffFile env fp = runGitOutput env ["diff", fp]
 -- | Run arbitrary git command.
 gitRaw :: GitEnv -> [String] -> IO (Either DotfError ())
 gitRaw env args = do
-  cfg <- gitBare env args
+  let cfg = gitBare env args
   (exit, _, err) <- PT.readProcess cfg
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
@@ -265,23 +272,46 @@ gitRaw env args = do
 hasBareRepo :: GitEnv -> IO Bool
 hasBareRepo env = doesDirectoryExist (dotfGitDir env)
 
--- | Get (ahead, behind) counts relative to upstream.
--- Falls back to (0,0) on any error.
-gitAheadBehind :: GitEnv -> IO (Int, Int)
-gitAheadBehind env = do
-  result <- try go :: IO (Either SomeException (Int, Int))
-  pure $ either (const (0, 0)) id result
+-- | Check if a merge is in progress.
+hasMergeHead :: GitEnv -> IO Bool
+hasMergeHead env = doesFileExist (dotfGitDir env </> "MERGE_HEAD")
+
+-- | List files with merge conflicts.
+gitConflictFiles :: GitEnv -> IO (Either DotfError [FilePath])
+gitConflictFiles env =
+  processFileListResult <$> PT.readProcess (gitBare env ["diff", "--name-only", "--diff-filter=U"])
+
+-- | Get unpushed-commits count relative to upstream.
+-- Falls back to 0 on any error (no upstream, detached HEAD, etc.).
+gitAhead :: GitEnv -> IO Int
+gitAhead env = do
+  result <- try go :: IO (Either SomeException Int)
+  pure $ either (const 0) id result
   where
     go = do
-      cfg <- gitBare env ["rev-list", "--left-right", "--count", "HEAD...@{upstream}"]
+      let cfg = gitBare env ["rev-list", "--count", "@{upstream}..HEAD"]
       (exit, out, _) <- PT.readProcess cfg
       case exit of
-        PT.ExitFailure _ -> pure (0, 0)
-        PT.ExitSuccess   -> pure $ parseCounts (C8.unpack out)
-    parseCounts s = case words s of
-      [a, b] -> (readDef 0 a, readDef 0 b)
-      _      -> (0, 0)
-    readDef d str' = case reads str' of
+        PT.ExitFailure _ -> pure 0
+        PT.ExitSuccess   -> pure $ readDef 0 (C8.unpack out)
+    readDef d s = case reads (filter (/= '\n') s) of
+      [(n, "")] -> n
+      _         -> d
+
+-- | Get commits-behind count relative to upstream.
+-- Falls back to 0 on any error (no upstream, detached HEAD, etc.).
+gitBehind :: GitEnv -> IO Int
+gitBehind env = do
+  result <- try go :: IO (Either SomeException Int)
+  pure $ either (const 0) id result
+  where
+    go = do
+      let cfg = gitBare env ["rev-list", "--count", "HEAD..@{upstream}"]
+      (exit, out, _) <- PT.readProcess cfg
+      case exit of
+        PT.ExitFailure _ -> pure 0
+        PT.ExitSuccess   -> pure $ readDef 0 (C8.unpack out)
+    readDef d s = case reads (filter (/= '\n') s) of
       [(n, "")] -> n
       _         -> d
 

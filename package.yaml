@@ -13,7 +13,6 @@ description:         Modular dotfile manager with git bare repo + sparse checkou
 
 dependencies:
 - base
-- extra
 - bytestring
 - typed-process
 - directory
@@ -32,7 +31,6 @@ dependencies:
 - containers
 - brick
 - vty
-- text-zipper
 - async
 
 default-extensions:
@@ -82,3 +80,4 @@ tests:
     - hspec-discover
     - hedgehog
     - hspec-hedgehog
+    - temporary

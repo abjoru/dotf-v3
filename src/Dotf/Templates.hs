@@ -35,6 +35,8 @@ scaffoldPluginsYaml =
   \#     depends: []
   \#     paths:
   \#       - .config/nvim/
+  \#     arch: [neovim, ripgrep]
+  \#     osx: [neovim, ripgrep]
   \#     post-install: ["nvim --headless +PlugInstall +qa"]
   \#
   \# watchlist:

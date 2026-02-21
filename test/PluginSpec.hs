@@ -1,9 +1,12 @@
 module PluginSpec (spec) where
 
+import           Data.List           (nub)
 import qualified Data.Map.Strict     as Map
 import           Dotf.Plugin
 import           Dotf.Types
+import           Gen                 (genPluginConfig)
 import           Hedgehog
+import qualified Hedgehog.Gen        as Gen
 import           Test.Hspec
 import           Test.Hspec.Hedgehog (hedgehog)
 
@@ -12,9 +15,9 @@ spec = do
   describe "resolveDependencies" $ do
     it "includes all transitive deps" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["b"] Nothing)
-            , ("b", Plugin "b" Nothing [] ["c"] Nothing)
-            , ("c", Plugin "c" Nothing [] []    Nothing)
+            [ ("a", Plugin "a" Nothing [] ["b"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] ["c"] Nothing [] [] [])
+            , ("c", Plugin "c" Nothing [] []    Nothing [] [] [])
             ]
       case resolveDependencies plugins ["a"] of
         Left err -> expectationFailure $ show err
@@ -25,8 +28,8 @@ spec = do
 
     it "respects dependency order" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["b"] Nothing)
-            , ("b", Plugin "b" Nothing [] []    Nothing)
+            [ ("a", Plugin "a" Nothing [] ["b"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] []    Nothing [] [] [])
             ]
       case resolveDependencies plugins ["a"] of
         Left err -> expectationFailure $ show err
@@ -37,8 +40,8 @@ spec = do
 
     it "detects cycles" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["b"] Nothing)
-            , ("b", Plugin "b" Nothing [] ["a"] Nothing)
+            [ ("a", Plugin "a" Nothing [] ["b"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] ["a"] Nothing [] [] [])
             ]
       case resolveDependencies plugins ["a"] of
         Left (DependencyError _) -> pure ()
@@ -46,17 +49,46 @@ spec = do
 
     it "detects missing deps" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["missing"] Nothing)
+            [ ("a", Plugin "a" Nothing [] ["missing"] Nothing [] [] [])
             ]
       case resolveDependencies plugins ["a"] of
         Left (PluginNotFound _) -> pure ()
         other -> expectationFailure $ "Expected PluginNotFound, got: " ++ show other
 
+    it "handles multiple independent targets" $ do
+      let plugins = Map.fromList
+            [ ("a", Plugin "a" Nothing [] [] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] [] Nothing [] [] [])
+            , ("c", Plugin "c" Nothing [] [] Nothing [] [] [])
+            ]
+      case resolveDependencies plugins ["a", "b", "c"] of
+        Left err -> expectationFailure $ show err
+        Right resolved -> do
+          resolved `shouldContain` ["a"]
+          resolved `shouldContain` ["b"]
+          resolved `shouldContain` ["c"]
+
+    it "targets included in result" $ hedgehog $ do
+      cfg <- forAll genPluginConfig
+      let pmap = _pcPlugins cfg
+      targets <- forAll $ Gen.subsequence (Map.keys pmap)
+      case resolveDependencies pmap targets of
+        Left _         -> success
+        Right resolved -> assert $ all (`elem` resolved) targets
+
+    it "no duplicates in result" $ hedgehog $ do
+      cfg <- forAll genPluginConfig
+      let pmap = _pcPlugins cfg
+      targets <- forAll $ Gen.subsequence (Map.keys pmap)
+      case resolveDependencies pmap targets of
+        Left _         -> success
+        Right resolved -> resolved === nub resolved
+
   describe "checkRemoveSafety" $ do
     it "blocks removal when dependents exist" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["b"] Nothing)
-            , ("b", Plugin "b" Nothing [] []    Nothing)
+            [ ("a", Plugin "a" Nothing [] ["b"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] []    Nothing [] [] [])
             ]
       case checkRemoveSafety plugins ["a", "b"] ["b"] of
         Left (DependencyError _) -> pure ()
@@ -64,27 +96,27 @@ spec = do
 
     it "allows removal when no dependents" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [] ["b"] Nothing)
-            , ("b", Plugin "b" Nothing [] []    Nothing)
+            [ ("a", Plugin "a" Nothing [] ["b"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] []    Nothing [] [] [])
             ]
       checkRemoveSafety plugins ["a", "b"] ["a"] `shouldBe` Right ()
 
   describe "validatePaths" $ do
     it "passes clean config" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing)
-            , ("b", Plugin "b" Nothing [".gitconfig"] [] Nothing)
+            [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [".gitconfig"] [] Nothing [] [] [])
             ]
       validatePaths plugins `shouldBe` Right ()
 
-    it "rejects duplicate paths" $ hedgehog $ do
+    it "rejects duplicate paths" $ do
       let plugins = Map.fromList
-            [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing)
-            , ("b", Plugin "b" Nothing [".zshrc"] [] Nothing)
+            [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [".zshrc"] [] Nothing [] [] [])
             ]
       case validatePaths plugins of
-        Left (PathConflict _ _ _) -> success
-        other                     -> annotateShow other >> failure
+        Left (PathConflict _ _ _) -> pure ()
+        other                     -> expectationFailure $ "Expected PathConflict, got: " ++ show other
 
 elemIndex' :: Eq a => a -> [a] -> Int
 elemIndex' _ [] = -1

@@ -1,7 +1,8 @@
 module ProfileSpec (spec) where
 
-import           Data.List           (isPrefixOf)
 import qualified Data.Map.Strict     as Map
+import           Dotf.Path           (isSubpathOf)
+import           Dotf.Plugin         (managedPaths)
 import           Dotf.Profile
 import           Dotf.Types
 import           Gen                 (genRelPath)
@@ -17,11 +18,11 @@ spec = do
     it "partition property: assigned + unassigned = input" $ hedgehog $ do
       files <- forAll $ Gen.list (Range.linear 0 20) genRelPath
       let plugins = Map.fromList
-            [ ("shell", Plugin "shell" Nothing [".zshrc", ".zprofile"] [] Nothing)
-            , ("nvim",  Plugin "nvim"  Nothing [".config/nvim/"]       [] Nothing)
+            [ ("shell", Plugin "shell" Nothing [".zshrc", ".zprofile"] [] Nothing [] [] [])
+            , ("nvim",  Plugin "nvim"  Nothing [".config/nvim/"]       [] Nothing [] [] [])
             ]
-          metaPrefix = ".config/dotf/"
-          userFiles = filter (not . (metaPrefix `isPrefixOf`)) files
+          isManagedPath f = any (\m -> m `isSubpathOf` f) managedPaths
+          userFiles = filter (not . isManagedPath) files
           (assigned, unassigned) = checkCoverage files plugins
       length assigned + length unassigned === length userFiles
 

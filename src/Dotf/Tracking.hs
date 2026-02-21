@@ -17,6 +17,7 @@ module Dotf.Tracking (
 import           Control.Exception (IOException, try)
 import           Control.Monad     (foldM)
 import qualified Data.Map.Strict   as Map
+import           Data.Maybe        (listToMaybe)
 import qualified Data.Text         as T
 import           Dotf.Config
 import           Dotf.Git
@@ -42,55 +43,75 @@ classifyUntracked files plugins watchPaths =
           | any (\wp -> wp `isSubpathOf` f) watchPaths -> (plugMap, f:wl)
           | otherwise -> (plugMap, wl)
 
-    findPluginMatch f =
-      let matches = [ name
-                     | (name, plugin) <- Map.toList plugins
-                     , any (\pp -> pp `isSubpathOf` f) (_pluginPaths plugin)
-                     ]
-      in case matches of
-        (m:_) -> Just m
-        []    -> Nothing
+    findPluginMatch f = listToMaybe
+      [ name
+      | (name, plugin) <- Map.toList plugins
+      , any (\pp -> pp `isSubpathOf` f) (_pluginPaths plugin)
+      ]
 
 -- | Track a file: git add + optionally assign to plugin with conflict resolution.
+-- When a profile is active (sparse checkout), adds path to sparse checkout first.
 trackFile :: GitEnv -> RelPath -> Maybe PluginName -> IO (Either DotfError ())
 trackFile env path mPlugin = do
   let relPath = normalizePath (_geHome env) path
-  addResult <- gitAdd env relPath
-  case addResult of
+  -- Add to sparse checkout if any plugins are installed (sparse checkout is active)
+  stResult <- loadLocalState env
+  let sparseActive = case stResult of
+        Right st -> not (null (_lsInstalledPlugins st))
+        Left _   -> False
+  sparseOk <- if sparseActive
+    then gitSparseCheckoutAdd env [relPath]
+    else pure $ Right ()
+  case sparseOk of
     Left err -> pure $ Left err
-    Right () -> case mPlugin of
-      Nothing       -> pure $ Right ()
-      Just plugName -> reassignFiles env [relPath] plugName
+    Right () -> do
+      addResult <- gitAdd env relPath
+      case addResult of
+        Left err -> pure $ Left err
+        Right () -> case mPlugin of
+          Nothing       -> pure $ Right ()
+          Just plugName -> reassignFiles env [relPath] plugName
 
 -- | Assign files to a plugin, checking for cross-plugin path conflicts.
 -- Returns PathConflict if any file is already covered by another plugin.
+-- Updates sparse-checkout before git add when plugins are installed.
 reassignFiles :: GitEnv -> [RelPath] -> PluginName -> IO (Either DotfError ())
 reassignFiles env paths plugName = do
   let relPaths = map (normalizePath (_geHome env)) paths
-  addResult <- foldM (\acc fp -> case acc of
-    Left err -> pure $ Left err
-    Right () -> gitAdd env fp
-    ) (Right ()) relPaths
-  case addResult of
+  -- Add to sparse checkout if any plugins are installed (sparse checkout is active)
+  stResult <- loadLocalState env
+  let sparseActive = case stResult of
+        Right st -> not (null (_lsInstalledPlugins st))
+        Left _   -> False
+  sparseOk <- if sparseActive
+    then gitSparseCheckoutAdd env relPaths
+    else pure $ Right ()
+  case sparseOk of
     Left err -> pure $ Left err
     Right () -> do
-      cfgResult <- loadPluginConfig env
-      case cfgResult of
+      addResult <- foldM (\acc fp -> case acc of
         Left err -> pure $ Left err
-        Right cfg -> case Map.lookup plugName (_pcPlugins cfg) of
-          Nothing -> pure $ Left $ PluginNotFound plugName
-          Just _  -> case findConflict relPaths plugName (_pcPlugins cfg) of
-            Just err -> pure $ Left err
-            Nothing  -> do
-              let target   = (_pcPlugins cfg) Map.! plugName
-                  existing = _pluginPaths target
-                  kept     = filter (\e -> not $ any (`isSubpathOf` e) relPaths) existing
-                  toAdd    = filter (\p -> not $ any (`isSubpathOf` p) kept) relPaths
-                  target'  = kept ++ toAdd
-                  newPlugins = Map.insert plugName (target { _pluginPaths = target' }) (_pcPlugins cfg)
-                  newCfg   = cfg { _pcPlugins = newPlugins }
-              savePluginConfig env newCfg
-              pure $ Right ()
+        Right () -> gitAdd env fp
+        ) (Right ()) relPaths
+      case addResult of
+        Left err -> pure $ Left err
+        Right () -> do
+          cfgResult <- loadPluginConfig env
+          case cfgResult of
+            Left err -> pure $ Left err
+            Right cfg -> case Map.lookup plugName (_pcPlugins cfg) of
+              Nothing -> pure $ Left $ PluginNotFound plugName
+              Just target -> case findConflict relPaths plugName (_pcPlugins cfg) of
+                Just err -> pure $ Left err
+                Nothing  -> do
+                  let existing = _pluginPaths target
+                      kept     = filter (\e -> not $ any (`isSubpathOf` e) relPaths) existing
+                      toAdd    = filter (\p -> not $ any (`isSubpathOf` p) kept) relPaths
+                      target'  = kept ++ toAdd
+                      newPlugins = Map.insert plugName (target { _pluginPaths = target' }) (_pcPlugins cfg)
+                      newCfg   = cfg { _pcPlugins = newPlugins }
+                  savePluginConfig env newCfg
+                  pure $ Right ()
 
 -- | Check if any path is already covered by a different plugin.
 findConflict :: [RelPath] -> PluginName -> Map.Map PluginName Plugin -> Maybe DotfError

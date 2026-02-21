@@ -20,7 +20,8 @@ module Dotf.Tui.Theme (
   attrHelpKey,
   attrHelpDesc,
   attrStatusOk,
-  attrStatusWarn,
+  attrStatusDirty,
+  attrStatusBehind,
 ) where
 
 import           Brick                (AttrName, attrName, fg, on)
@@ -31,7 +32,7 @@ import qualified Brick.Widgets.List   as L
 import           Graphics.Vty         (black, bold, brightBlack, brightCyan,
                                        brightGreen, brightMagenta, brightWhite,
                                        brightYellow, green, red, rgbColor,
-                                       underline, white, withStyle, yellow)
+                                       white, withStyle, yellow)
 
 -- | Gruvbox-inspired theme.
 theme :: Theme
@@ -72,7 +73,8 @@ theme = newTheme
   , (attrHelpDesc, fg brightWhite)
   -- Status bar
   , (attrStatusOk, fg brightGreen)
-  , (attrStatusWarn, withStyle (fg yellow) underline)
+  , (attrStatusDirty, withStyle (fg red) bold)
+  , (attrStatusBehind, withStyle (fg brightGreen) bold)
   ]
   where
     bg = rgbColor (0 :: Integer) 0 0
@@ -112,6 +114,7 @@ attrHelpKey, attrHelpDesc :: AttrName
 attrHelpKey  = attrName "help-key"
 attrHelpDesc = attrName "help-desc"
 
-attrStatusOk, attrStatusWarn :: AttrName
-attrStatusOk   = attrName "status-ok"
-attrStatusWarn = attrName "status-warn"
+attrStatusOk, attrStatusDirty, attrStatusBehind :: AttrName
+attrStatusOk      = attrName "status-ok"
+attrStatusDirty   = attrName "status-dirty"
+attrStatusBehind  = attrName "status-behind"

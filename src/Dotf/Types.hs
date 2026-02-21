@@ -34,6 +34,7 @@ module Dotf.Types (
   geHome,
   -- ** Plugin
   pluginName, pluginDescription, pluginPaths, pluginDepends, pluginPostInstall,
+  pluginArch, pluginOsx, pluginCask,
   -- ** PluginConfig
   pcPlugins, pcWatchlist,
   -- ** Profile
@@ -51,6 +52,7 @@ module Dotf.Types (
 import           Data.Aeson       (FromJSON (..), ToJSON (..), Value (..),
                                    object, withObject, (.!=), (.:), (.:?), (.=))
 import           Data.Aeson.Types (Parser)
+import           Data.Foldable    (toList)
 import qualified Data.Map.Strict  as Map
 import           Data.Text        (Text)
 import qualified Data.Text        as T
@@ -79,6 +81,9 @@ data Plugin = Plugin
   , _pluginPaths       :: [RelPath]
   , _pluginDepends     :: [PluginName]
   , _pluginPostInstall :: Maybe Hook
+  , _pluginArch        :: [Text]
+  , _pluginOsx         :: [Text]
+  , _pluginCask        :: [Text]
   } deriving (Show, Eq)
 
 newtype Watchlist = Watchlist
@@ -158,7 +163,7 @@ makeLenses ''UntrackedReport
 --------------------
 
 instance FromJSON Hook where
-  parseJSON (Array arr) = InlineHook <$> mapM parseJSON (foldr (:) [] arr)
+  parseJSON (Array arr) = InlineHook <$> mapM parseJSON (toList arr)
   parseJSON (String s)  = pure $ ScriptHook (T.unpack s)
   parseJSON v           = fail $ "Expected Array or String for Hook, got: " ++ show v
 
@@ -173,6 +178,9 @@ instance FromJSON Plugin where
            <*> v .:? "paths" .!= []
            <*> v .:? "depends" .!= []
            <*> v .:? "post-install"
+           <*> v .:? "arch" .!= []
+           <*> v .:? "osx"  .!= []
+           <*> v .:? "cask" .!= []
 
 instance ToJSON Plugin where
   toJSON p = object
@@ -181,10 +189,13 @@ instance ToJSON Plugin where
     , "paths"        .= _pluginPaths p
     , "depends"      .= _pluginDepends p
     , "post-install" .= _pluginPostInstall p
+    , "arch"         .= _pluginArch p
+    , "osx"          .= _pluginOsx p
+    , "cask"         .= _pluginCask p
     ]
 
 instance FromJSON Watchlist where
-  parseJSON (Array arr) = Watchlist <$> mapM parseJSON (foldr (:) [] arr)
+  parseJSON (Array arr) = Watchlist <$> mapM parseJSON (toList arr)
   parseJSON _           = fail "Expected Array for Watchlist"
 
 instance ToJSON Watchlist where
@@ -217,6 +228,9 @@ instance ToJSON PluginConfig where
         ++ (if null (_pluginPaths p) then [] else ["paths" .= _pluginPaths p])
         ++ (if null (_pluginDepends p) then [] else ["depends" .= _pluginDepends p])
         ++ maybe [] (\h -> ["post-install" .= h]) (_pluginPostInstall p)
+        ++ (if null (_pluginArch p) then [] else ["arch" .= _pluginArch p])
+        ++ (if null (_pluginOsx p) then [] else ["osx" .= _pluginOsx p])
+        ++ (if null (_pluginCask p) then [] else ["cask" .= _pluginCask p])
 
 instance FromJSON Profile where
   parseJSON = withObject "Profile" $ \v ->
@@ -273,6 +287,9 @@ parsePluginMap = Map.traverseWithKey $ \k val ->
       <*> v .:? "paths" .!= []
       <*> v .:? "depends" .!= []
       <*> v .:? "post-install"
+      <*> v .:? "arch" .!= []
+      <*> v .:? "osx"  .!= []
+      <*> v .:? "cask" .!= []
   ) val
 
 parseProfileMap :: Map.Map Text Value -> Parser (Map.Map ProfileName Profile)

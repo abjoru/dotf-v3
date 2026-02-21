@@ -6,7 +6,10 @@ import           Brick
 import           Brick.Widgets.Border (borderWithLabel)
 import qualified Brick.Widgets.List   as L
 import qualified Data.Map.Strict      as Map
+import           Data.Maybe           (fromMaybe)
+import           Data.Text            (Text)
 import qualified Data.Text            as T
+import           Dotf.Packages        (Distro (..))
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
 import           Dotf.Tui.Widgets     (titleWidget)
@@ -52,20 +55,38 @@ renderDetail st =
           deps      = if null (_pluginDepends p) then "(none)"
                       else T.unpack $ T.intercalate ", " (_pluginDepends p)
           paths     = _pluginPaths p
-          files     = maybe [] id $ Map.lookup (_pluginName p) (st ^. stPluginFiles)
+          pkgs      = distroPackages (st ^. stPkgDistro) p
+          files     = fromMaybe [] $ Map.lookup (_pluginName p) (st ^. stPluginFiles)
           instLabel = if installed then "Yes" else "No"
-      in padAll 1 $ vBox
+          adv       = st ^. stDetailAdvanced
+          pathsW    = if adv
+            then [ withAttr attrBold $ str $ "Paths (" ++ show (length paths) ++ "):"
+                 , vBox $ map (str . ("  " ++)) (if null paths then ["(none)"] else paths)
+                 ]
+            else [ field "Paths" (show (length paths)) ]
+          pkgsW     = case st ^. stPkgDistro of
+            UnsupportedDistro -> []
+            _ -> if adv
+              then [ withAttr attrBold $ str $ "Packages (" ++ show (length pkgs) ++ "):"
+                   , vBox $ map (str . ("  " ++) . T.unpack) (if null pkgs then [T.pack "(none)"] else pkgs)
+                   ]
+              else [ field "Packages" (show (length pkgs)) ]
+      in padAll 1 $ vBox $
         [ field "Name" name
         , field "Description" desc
         , field "Installed" instLabel
         , field "Dependencies" deps
-        , str ""
-        , withAttr attrBold $ str "Paths:"
-        , vBox $ map (str . ("  " ++)) (if null paths then ["(none)"] else paths)
-        , str ""
+        ] ++ pathsW ++ pkgsW ++
+        [ str ""
         , withAttr attrBold $ str "Files:"
         , vBox $ map (str . ("  " ++)) (if null files then ["(none)"] else files)
         ]
+
+-- | Get packages for the detected distro.
+distroPackages :: Distro -> Plugin -> [Text]
+distroPackages Arch p              = _pluginArch p
+distroPackages Osx  p              = _pluginOsx p ++ _pluginCask p
+distroPackages UnsupportedDistro _ = []
 
 -- | Render a labeled field.
 field :: String -> String -> Widget n

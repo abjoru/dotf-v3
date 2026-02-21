@@ -51,17 +51,23 @@ spec = do
     it "trailing slash parent" $
       isSubpathOf ".config/nvim/" ".config/nvim/init.lua" `shouldBe` True
 
+    it "does not match prefix of different path component" $
+      isSubpathOf ".config/nvim" ".config/nvimrc" `shouldBe` False
+
+    it "child is not subpath of parent" $
+      isSubpathOf ".config/nvim/init.lua" ".config/nvim" `shouldBe` False
+
   describe "findMatchingPlugin" $ do
     it "finds correct plugin" $ do
       let plugins = Map.fromList
-            [ ("neovim", Plugin "neovim" Nothing [".config/nvim/"] [] Nothing)
-            , ("shell",  Plugin "shell"  Nothing [".zshrc", ".zprofile"] [] Nothing)
+            [ ("neovim", Plugin "neovim" Nothing [".config/nvim/"] [] Nothing [] [] [])
+            , ("shell",  Plugin "shell"  Nothing [".zshrc", ".zprofile"] [] Nothing [] [] [])
             ]
       findMatchingPlugin ".config/nvim/init.lua" plugins `shouldBe` Just "neovim"
 
     it "returns Nothing when no match" $ do
       let plugins = Map.fromList
-            [ ("shell", Plugin "shell" Nothing [".zshrc"] [] Nothing)
+            [ ("shell", Plugin "shell" Nothing [".zshrc"] [] Nothing [] [] [])
             ]
       findMatchingPlugin ".config/kitty/kitty.conf" plugins `shouldBe` Nothing
 
@@ -69,7 +75,7 @@ spec = do
       findMatchingPlugin ".zshrc" Map.empty `shouldBe` Nothing
 
   describe "consolidatePluginPaths" $ do
-    let mkPlugin n ps = Plugin n Nothing ps [] Nothing
+    let mkPlugin n ps = Plugin n Nothing ps [] Nothing [] [] []
 
     it "consolidates siblings with no conflict" $ do
       let plugins = Map.fromList

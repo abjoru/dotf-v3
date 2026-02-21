@@ -131,8 +131,8 @@ spec = do
 
     it "classifyUntracked sorts correctly" $ do
       let plugins = Map.fromList
-            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing)
-            , ("shell", Plugin "shell" Nothing [".zshrc"] [] Nothing)
+            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing [] [] [])
+            , ("shell", Plugin "shell" Nothing [".zshrc"] [] Nothing [] [] [])
             ]
           watchPaths = [".config/"]
           files = [".config/nvim/newfile.lua", ".config/kitty/kitty.conf", ".random"]
@@ -146,8 +146,8 @@ spec = do
     it "error cases - path conflict" $ do
       let cfg = PluginConfig
             (Map.fromList
-              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing)
-              , ("b", Plugin "b" Nothing [".zshrc", ".gitconfig"] [] Nothing)
+              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing [] [] [])
+              , ("b", Plugin "b" Nothing [".zshrc", ".gitconfig"] [] Nothing [] [] [])
               ])
             (Watchlist [])
       case validatePluginConfig cfg of
@@ -156,8 +156,8 @@ spec = do
 
     it "error cases - removing depended plugin" $ do
       let plugins = Map.fromList
-            [ ("base", Plugin "base" Nothing [] [] Nothing)
-            , ("shell", Plugin "shell" Nothing [] ["base"] Nothing)
+            [ ("base", Plugin "base" Nothing [] [] Nothing [] [] [])
+            , ("shell", Plugin "shell" Nothing [] ["base"] Nothing [] [] [])
             ]
       case checkRemoveSafety plugins ["base", "shell"] ["base"] of
         Left (DependencyError _) -> pure ()

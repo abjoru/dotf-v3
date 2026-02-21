@@ -7,7 +7,10 @@ import           Brick                  (BrickEvent (..), suspendAndResume,
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
+import qualified Data.Map.Strict        as Map
+import           Data.Maybe             (mapMaybe)
 import qualified Data.Text              as T
+import           Dotf.Packages
 import           Dotf.Profile           (activateProfile)
 import           Dotf.Tui.Types
 import           Dotf.Types
@@ -50,9 +53,19 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'a') [])) = do
       result <- liftIO $ activateProfile env (_profileName p)
       case result of
         Left err -> stError .= Just [displayError err]
-        Right () -> do
+        Right resolved -> do
+          -- Check for missing OS packages
+          dist <- liftIO detectDistro
+          let pcfg = st ^. stPluginConfig
+              plugins = mapMaybe (\n -> Map.lookup n (_pcPlugins pcfg)) resolved
+              allPkgs = collectPackages dist plugins
+              caskPkgs = collectCaskPackages plugins
+          installed <- liftIO $ listInstalledPackages dist
+          let missing = filterUninstalled installed allPkgs
           st' <- liftIO $ syncAll st
-          put st'
+          if null missing
+            then put st'
+            else put $ openPackagePopup dist missing caskPkgs st'
 
 -- x: deactivate profile (triggers confirm)
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'x') [])) = do

@@ -6,6 +6,7 @@ module Dotf.Tui.Widgets (
 
 import           Brick
 import qualified Brick.Widgets.Center as C
+import           Data.List            (intersperse)
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
 import           Lens.Micro           ((^.))
@@ -31,12 +32,16 @@ tabBar st =
     assigned = st ^. stAssignedCount
     total    = st ^. stTotalCount
     coverageWidget = str $ show assigned ++ "/" ++ show total ++ " assigned"
+    uc = st ^. stUncommitted
     ah = st ^. stAhead
     bh = st ^. stBehind
     syncWidget
-      | ah == 0 && bh == 0 = withAttr attrStatusOk (str "in sync")
-      | otherwise = withAttr attrStatusWarn $
-          str $ "\x2191" ++ show ah ++ " \x2193" ++ show bh
+      | uc == 0 && ah == 0 && bh == 0 = withAttr attrStatusOk (str "in sync")
+      | otherwise = hBox $ intersperse (str " ") $ concat
+          [ [ withAttr attrStatusDirty  $ str $ "~" ++ show uc | uc > 0 ]
+          , [ withAttr attrStatusDirty  $ str $ "\x2191" ++ show ah | ah > 0 ]
+          , [ withAttr attrStatusBehind $ str $ "\x2193" ++ show bh | bh > 0 ]
+          ]
 
 -- | Render context-sensitive help bar (v2 style: two lines, centered, bordered).
 helpBar :: State -> Widget RName
@@ -48,6 +53,7 @@ helpBar st =
         Just FilterPopup     -> (filterHelp1, [])
         Just NewPluginPopup  -> (newPluginHelp1, [])
         Just NewProfilePopup -> (newProfileHelp1, [])
+        Just PackagePopup    -> (packageHelp1, [])
         Nothing -> case st ^. stTab of
           DotfilesTab -> (dotfilesHelp1, dotfilesHelp2)
           PluginsTab  -> (pluginsHelp1, pluginsHelp2)
@@ -68,13 +74,14 @@ helpBar st =
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
         , ("a", "Assign"), ("u", "Untrack"), ("I", "Ignore")
+        , ("A", "AI Ignore"), ("G", "AI Assign")
         ]
       pluginsHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
         ]
       pluginsHelp2 =
         [ ("n", "New"), ("e", "Edit"), ("D", "Delete")
-        , ("i", "Install"), ("r", "Remove")
+        , ("i", "Install"), ("r", "Remove"), ("v", "Details")
         ]
       profilesHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
@@ -104,6 +111,9 @@ helpBar st =
         ]
       newProfileHelp1 =
         [ ("Tab", "Switch Field"), ("Space", "Toggle"), ("Enter", "Create"), ("Esc", "Cancel")
+        ]
+      packageHelp1 =
+        [ ("Space", "Toggle"), ("a", "All"), ("n", "None"), ("Enter", "Install"), ("Esc", "Skip")
         ]
 
 -- | Render a pane title, highlighted if focused.

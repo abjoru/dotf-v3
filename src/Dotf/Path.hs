@@ -6,7 +6,7 @@ module Dotf.Path (
   consolidatePluginPaths,
 ) where
 
-import           Data.List       (find, nub, sort)
+import           Data.List       (find, isPrefixOf, nub, sort)
 import qualified Data.Map.Strict as Map
 import           Dotf.Types      (Plugin (..), PluginName, RelPath)
 import           System.FilePath (makeRelative, normalise, takeDirectory, (</>))
@@ -15,11 +15,9 @@ import           System.FilePath (makeRelative, normalise, takeDirectory, (</>))
 -- Handles absolute paths, ~/ paths, and already-relative paths.
 normalizePath :: FilePath -> FilePath -> RelPath
 normalizePath home fp
-  | "~/" `isPrefixOfFP` fp = normalise $ drop 2 fp
-  | "/" `isPrefixOfFP` fp  = normalise $ makeRelative home fp
-  | otherwise              = normalise fp
-  where
-    isPrefixOfFP prefix path = take (length prefix) path == prefix
+  | "~/" `isPrefixOf` fp = normalise $ drop 2 fp
+  | "/" `isPrefixOf` fp  = normalise $ makeRelative home fp
+  | otherwise            = normalise fp
 
 -- | Check if one path is a subpath (prefix) of another.
 -- Both paths should be normalized relative paths.
@@ -27,9 +25,8 @@ isSubpathOf :: RelPath -> RelPath -> Bool
 isSubpathOf parent child =
   let parent' = addTrailingSlash $ normalise parent
       child'  = normalise child
-  in parent' `isPrefixOfFP` child' || normalise parent == normalise child
+  in parent' `isPrefixOf` child' || normalise parent == normalise child
   where
-    isPrefixOfFP prefix path = take (length prefix) path == prefix
     addTrailingSlash p
       | null p         = "/"
       | last p == '/'  = p

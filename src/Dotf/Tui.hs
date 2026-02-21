@@ -8,6 +8,7 @@ import qualified Brick.Widgets.Border  as B
 import qualified Brick.Widgets.Center  as C
 import qualified Brick.Widgets.Edit    as E
 import qualified Brick.Widgets.List    as L
+import qualified Data.Text             as T
 import           Dotf.Tui.Events       (handleEvent)
 import           Dotf.Tui.Tab.Dotfiles (drawDotfilesTab)
 import           Dotf.Tui.Tab.Plugins  (drawPluginsTab)
@@ -49,6 +50,7 @@ chooseCursor st = case st ^. stPopup of
   Just NewProfilePopup -> case st ^. stFocus of
     FNewProfileName -> showCursorNamed RNewProfileName
     _               -> const Nothing
+  Just PackagePopup -> const Nothing
   _                 -> neverShowCursor st
 
 -- | Main draw function. Returns popup layer over main layer.
@@ -72,6 +74,7 @@ drawUI st = popupLayer ++ [mainLayer]
           Just FilterPopup     -> [drawFilterPopup st]
           Just NewPluginPopup  -> [drawNewPluginPopup st]
           Just NewProfilePopup -> [drawNewProfilePopup st]
+          Just PackagePopup    -> [drawPackagePopup st]
           Nothing              -> []
 
 -- | Render tab body.
@@ -198,3 +201,24 @@ renderToggleItem sel (name, checked) =
   let icon = if checked then "[x] " else "[ ] "
       a = if sel then attrSelItem else attrItem
   in withAttr a $ str $ icon ++ show name
+
+-- | Package selection popup.
+drawPackagePopup :: State -> Widget RName
+drawPackagePopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " Packages ") $
+  hLimit 50 $ vLimit 20 $ padAll 1 $ vBox
+    [ withAttr attrBold $ str "Missing packages:"
+    , vLimit 14 $ L.renderList renderPkgItem (st ^. stFocus == FPkgList) (st ^. stPkgItems)
+    , B.hBorder
+    , withAttr attrHelpKey (str "Space") <+> str " toggle  " <+>
+      withAttr attrHelpKey (str "a") <+> str " all  " <+>
+      withAttr attrHelpKey (str "n") <+> str " none  " <+>
+      withAttr attrHelpKey (str "Enter") <+> str " install  " <+>
+      withAttr attrHelpKey (str "Esc") <+> str " skip"
+    ]
+
+-- | Render a package item.
+renderPkgItem :: Bool -> PkgItem -> Widget RName
+renderPkgItem sel item =
+  let icon = if _piSelected item then "[x] " else "[ ] "
+      a = if sel then attrSelItem else attrItem
+  in withAttr a $ str $ icon ++ T.unpack (_piName item)

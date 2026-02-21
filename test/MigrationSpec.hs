@@ -77,7 +77,9 @@ spec = do
 
       -- Step 4: activate profile
       r7 <- activateProfile env "default"
-      r7 `shouldBe` Right ()
+      case r7 of
+        Left err -> expectationFailure $ show err
+        Right _  -> pure ()
 
       -- Verify state
       stE <- loadLocalState env
@@ -89,7 +91,7 @@ spec = do
           _lsInstalledPlugins st `shouldContain` ["git"]
 
     it "fails on missing bare repo" $ do
-      let env = GitEnv "/tmp/dotf-test-nonexistent"
+      let env = GitEnv "/tmp/dotf-test-nonexistent-0xDEADBEEF"
       result <- migrate env
       case result of
         Left _  -> pure ()

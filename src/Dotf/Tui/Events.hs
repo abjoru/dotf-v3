@@ -15,6 +15,7 @@ import           Dotf.Tui.Event.Dotfiles   (handleDotfilesEvent)
 import           Dotf.Tui.Event.Ignore     (handleIgnoreEvent)
 import           Dotf.Tui.Event.NewPlugin  (handleNewPluginEvent)
 import           Dotf.Tui.Event.NewProfile (handleNewProfileEvent)
+import           Dotf.Tui.Event.Packages   (handlePackageEvent)
 import           Dotf.Tui.Event.Plugins    (handlePluginsEvent)
 import           Dotf.Tui.Event.Profiles   (handleProfilesEvent)
 import           Dotf.Tui.Event.Save       (handleSaveEvent)
@@ -48,6 +49,7 @@ handleEvent ev = do
     (_, _, Just FilterPopup)     -> handleFilterPopup ev
     (_, _, Just NewPluginPopup)  -> handleNewPluginEvent ev
     (_, _, Just NewProfilePopup) -> handleNewProfileEvent ev
+    (_, _, Just PackagePopup)    -> handlePackageEvent ev
 
     -- Global keys (no popup active)
     _ -> handleGlobal ev

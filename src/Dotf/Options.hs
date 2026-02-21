@@ -21,7 +21,7 @@ import           Paths_dotf              (version)
 
 data Command
   -- Setup
-  = Init String (Maybe Text)
+  = Init Text (Maybe Text)
   | New
   | Migrate
   -- Plugins
@@ -36,18 +36,22 @@ data Command
   | Untracked (Maybe Text)
   | WatchlistCmd WatchlistCommand
   -- Save
-  | Save (Maybe String)
+  | Save (Maybe Text)
   -- Maintenance
   | Consolidate Bool  -- ^ True = apply, False = dry-run
   -- Manual git
   | Stage [FilePath]
   | Unstage [FilePath]
-  | Commit (Maybe String)
+  | Commit (Maybe Text)
   | Push
   | Pull
   | Status
   | Diff
   | GitRaw [String]
+  | Packages Bool  -- ^ True = install, False = list only
+  | SuggestIgnore
+  | SuggestAssign
+  | Resolve
   deriving Show
 
 data PluginCommand
@@ -100,11 +104,15 @@ parseCommand = hsubparser
   <> command "status"    (info (pure Status)  (progDesc "Show git status"))
   <> command "diff"      (info (pure Diff)    (progDesc "Show git diff"))
   <> command "git"       (info parseGitRaw    (progDesc "Raw git passthrough"))
+  <> command "packages"  (info parsePackages  (progDesc "List/install OS packages for active plugins"))
+  <> command "suggest-ignore" (info (pure SuggestIgnore) (progDesc "AI-assisted gitignore management"))
+  <> command "suggest-assign" (info (pure SuggestAssign) (progDesc "AI-assisted file-to-plugin assignment"))
+  <> command "resolve" (info (pure Resolve) (progDesc "AI-assisted merge conflict resolution"))
   )
 
 parseInit :: Parser Command
 parseInit = Init
-  <$> argument str (metavar "REPO_URL")
+  <$> argument (pack <$> str) (metavar "REPO_URL")
   <*> optional (option (pack <$> str)
       (  long "profile"
       <> short 'p'
@@ -228,7 +236,7 @@ parseConsolidate = Consolidate
 
 parseSave :: Parser Command
 parseSave = Save
-  <$> optional (argument str (metavar "MSG"))
+  <$> optional (argument (pack <$> str) (metavar "MSG"))
 
 parseStage :: Parser Command
 parseStage = Stage
@@ -240,7 +248,14 @@ parseUnstage = Unstage
 
 parseCommit :: Parser Command
 parseCommit = Commit
-  <$> optional (argument str (metavar "MSG"))
+  <$> optional (argument (pack <$> str) (metavar "MSG"))
+
+parsePackages :: Parser Command
+parsePackages = Packages
+  <$> switch
+      (  long "install"
+      <> help "Install missing packages"
+      )
 
 parseGitRaw :: Parser Command
 parseGitRaw = GitRaw

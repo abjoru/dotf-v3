@@ -8,14 +8,17 @@ import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map.Strict        as Map
 import qualified Data.Set               as Set
+import           Dotf.Commands          (runSuggestAssign, runSuggestIgnore)
 import           Dotf.Git               (gitDiffFile)
 import           Dotf.Path              (isSubpathOf)
+import           Dotf.Profile           (checkCoverage)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((&), (.~), (^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
+import           System.FilePath        ((</>))
 
 -- | Handle events in Dotfiles tab.
 handleDotfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
@@ -73,6 +76,28 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'I') [])) = do
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'f') [])) = do
   stPopup .= Just FilterPopup
   stFocus .= FFilterEditor
+
+-- A: AI-assisted gitignore
+handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'A') [])) = do
+  st <- get
+  let env = st ^. stEnv
+  suspendAndResume $ do
+    runSuggestIgnore env
+    syncDotfiles st
+
+-- G: AI-assisted plugin assignment
+handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'G') [])) = do
+  st <- get
+  let env        = st ^. stEnv
+      pcfg       = st ^. stPluginConfig
+      tracked    = st ^. stAllTracked
+      hasUntracked = not $ null $ L.listElements (st ^. stUntrackedList)
+      (_, unassigned) = checkCoverage tracked (_pcPlugins pcfg)
+  if null unassigned && not hasUntracked
+    then stError .= Just ["No unassigned or untracked files."]
+    else suspendAndResume $ do
+           runSuggestAssign env
+           syncDotfiles st
 
 -- F: clear filter
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'F') [])) = do
@@ -186,7 +211,7 @@ editSelected = do
       st <- get
       let home = _geHome (st ^. stEnv)
       suspendAndResume $ do
-        editFile (home ++ "/" ++ fp)
+        editFile (home </> fp)
         syncDotfiles st
 
 -- | Diff selected file.

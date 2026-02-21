@@ -2,6 +2,7 @@ module Gen (
   genPluginName,
   genProfileName,
   genRelPath,
+  genPkgName,
   genPlugin,
   genProfile,
   genWatchlist,
@@ -40,6 +41,12 @@ genRelPath = do
       name <- Gen.string (Range.linear 1 12) Gen.alphaNum
       pure $ if dot then "." ++ name else name
 
+genPkgName :: Gen Text
+genPkgName = Gen.element
+  [ "neovim", "ripgrep", "zsh", "starship", "kitty"
+  , "tmux", "git", "curl", "wget", "fzf"
+  ]
+
 genHook :: Gen Hook
 genHook = Gen.choice
   [ InlineHook <$> Gen.list (Range.linear 1 3) genCmdText
@@ -56,7 +63,10 @@ genPlugin = do
   paths <- Gen.list (Range.linear 0 5) genRelPath
   deps <- Gen.list (Range.linear 0 2) genPluginName
   hook <- Gen.maybe genHook
-  pure $ Plugin n desc paths deps hook
+  arch <- Gen.list (Range.linear 0 3) genPkgName
+  osx  <- Gen.list (Range.linear 0 3) genPkgName
+  cask <- Gen.list (Range.linear 0 3) genPkgName
+  pure $ Plugin n desc paths deps hook arch osx cask
 
 genProfile :: Gen Profile
 genProfile = Profile
@@ -72,7 +82,7 @@ genPluginConfig = do
   let pluginMap = Map.fromList [(p_pluginName p, p) | p <- plugins]
   wl <- genWatchlist
   pure $ PluginConfig pluginMap wl
-  where p_pluginName (Plugin n _ _ _ _) = n
+  where p_pluginName (Plugin n _ _ _ _ _ _ _) = n
 
 genProfileConfig :: Gen ProfileConfig
 genProfileConfig = do

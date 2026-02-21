@@ -11,6 +11,7 @@ module Dotf.Tui.Types (
   GroupItem(..),
   UntrackedItem(..),
   SaveItem(..),
+  PkgItem(..),
 
   -- * Custom event
   DEvent(..),
@@ -34,6 +35,7 @@ module Dotf.Tui.Types (
   openIgnorePopup,
   openNewPluginPopup,
   openNewProfilePopup,
+  openPackagePopup,
   pathSegments,
 
   -- * Lenses
@@ -47,11 +49,14 @@ module Dotf.Tui.Types (
   stIgnoreList,
   stNewPluginName, stNewPluginDesc,
   stNewProfileName, stNewProfilePlugins,
+  stPkgItems, stPkgDistro,
+  stDetailAdvanced,
   stFilterEditor, stFilterActive,
   stConfirm,
-  stAhead, stBehind, stAssignedCount, stTotalCount,
+  stUncommitted, stAhead, stBehind, stAssignedCount, stTotalCount,
   stError,
   siPath, siSelected, siIsStaged,
+  piName, piSelected, piIsCask,
 ) where
 
 import qualified Brick.Widgets.Edit       as E
@@ -66,6 +71,7 @@ import qualified Data.Text                as T
 import qualified Data.Vector              as V
 import           Dotf.Config
 import           Dotf.Git
+import           Dotf.Packages            (Distro (..), detectDistro)
 import           Dotf.Path                (isSubpathOf)
 import           Dotf.Plugin              (listPlugins, managedPaths)
 import           Dotf.Profile             (checkCoverage, listProfiles)
@@ -101,9 +107,10 @@ data Focus
   | FNewPluginDesc
   | FNewProfileName
   | FNewProfilePlugins
+  | FPkgList
   deriving (Eq, Show, Ord)
 
-data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup
+data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup
   deriving (Eq, Show, Ord)
 
 -- | Resource names for Brick widgets.
@@ -124,6 +131,7 @@ data RName
   | RNewPluginDesc
   | RNewProfileName
   | RNewProfilePlugins
+  | RPkgList
   deriving (Eq, Show, Ord)
 
 -- | Grouped item in tracked list: headers or file entries.
@@ -149,6 +157,13 @@ data SaveItem = SaveItem
   { _siPath     :: RelPath
   , _siSelected :: Bool
   , _siIsStaged :: Bool
+  } deriving (Eq, Show)
+
+-- | Package popup item: toggleable package.
+data PkgItem = PkgItem
+  { _piName     :: Text
+  , _piSelected :: Bool
+  , _piIsCask   :: Bool
   } deriving (Eq, Show)
 
 -- | Custom event type for Brick.
@@ -210,6 +225,13 @@ data State = State
   , _stNewPluginName     :: E.Editor String RName
   , _stNewPluginDesc     :: E.Editor String RName
 
+  -- Package popup
+  , _stPkgItems          :: L.List RName PkgItem
+  , _stPkgDistro         :: Distro
+
+  -- Detail toggle
+  , _stDetailAdvanced    :: Bool
+
   -- New profile popup
   , _stNewProfileName    :: E.Editor String RName
   , _stNewProfilePlugins :: L.List RName (PluginName, Bool)
@@ -222,6 +244,7 @@ data State = State
   , _stConfirm           :: Maybe (String, ConfirmAction)
 
   -- Status bar
+  , _stUncommitted       :: Int
   , _stAhead             :: Int
   , _stBehind            :: Int
   , _stAssignedCount     :: Int
@@ -232,6 +255,7 @@ data State = State
   }
 
 makeLenses ''SaveItem
+makeLenses ''PkgItem
 makeLenses ''State
 
 --------------------
@@ -254,17 +278,21 @@ buildState env = do
       initError = if null cfgErrors then Nothing else Just cfgErrors
       untrackedScope = scopePaths pcfg
 
+  -- Detect distro for package display
+  dist <- detectDistro
+
   -- Run git queries in parallel (untracked scoped to plugin + watchlist paths)
   ((trackedE, stagedE), (unstagedE, untrkE), (ah, bh)) <-
     concurrently3
       (concurrently (gitTracked env) (gitTrackedStaged env))
       (concurrently (gitTrackedUnstaged env) (gitUntracked env untrackedScope))
-      (gitAheadBehind env)
+      (concurrently (gitAhead env) (gitBehind env))
 
   let tracked  = either (const []) id trackedE
       staged   = either (const []) id stagedE
       unstaged = either (const []) id unstagedE
       untrk    = either (const []) id untrkE
+      uncommitted = length staged + length unstaged
 
   -- Classify tracked files with status
   stagedStatuses <- mapM (checkStatus env) staged
@@ -308,6 +336,9 @@ buildState env = do
     , _stAssignEditing = False
     , _stAssignEditor  = E.editor RAssignEditor (Just 1) ""
     , _stIgnoreList    = L.list RIgnoreList V.empty 1
+    , _stPkgItems         = L.list RPkgList V.empty 1
+    , _stPkgDistro        = dist
+    , _stDetailAdvanced   = False
     , _stNewPluginName    = E.editor RNewPluginName (Just 1) ""
     , _stNewPluginDesc    = E.editor RNewPluginDesc (Just 1) ""
     , _stNewProfileName    = E.editor RNewProfileName (Just 1) ""
@@ -315,6 +346,7 @@ buildState env = do
     , _stFilterEditor  = E.editor RFilterEditor (Just 1) ""
     , _stFilterActive  = False
     , _stConfirm       = Nothing
+    , _stUncommitted   = uncommitted
     , _stAhead         = ah
     , _stBehind        = bh
     , _stAssignedCount = length assigned
@@ -328,11 +360,12 @@ syncAll st = do
   let env = st ^. stEnv
   st' <- buildState env
   pure $ st'
-    & stTab       .~ (st ^. stTab)
-    & stFocus     .~ (st ^. stFocus)
-    & stPopup     .~ (st ^. stPopup)
-    & stCollapsed .~ (st ^. stCollapsed)
-    & stSelected  .~ (st ^. stSelected)
+    & stTab             .~ (st ^. stTab)
+    & stFocus           .~ (st ^. stFocus)
+    & stPopup           .~ (st ^. stPopup)
+    & stCollapsed       .~ (st ^. stCollapsed)
+    & stSelected        .~ (st ^. stSelected)
+    & stDetailAdvanced  .~ (st ^. stDetailAdvanced)
 
 -- | Sync dotfiles tab data.
 syncDotfiles :: State -> IO State
@@ -344,12 +377,13 @@ syncDotfiles st = do
     concurrently3
       (concurrently (gitTracked env) (gitTrackedStaged env))
       (concurrently (gitTrackedUnstaged env) (gitUntracked env (scopePaths pcfg)))
-      (gitAheadBehind env)
+      (concurrently (gitAhead env) (gitBehind env))
 
   let tracked  = either (const []) id trackedE
       staged   = either (const []) id stagedE
       unstaged = either (const []) id unstagedE
       untrk    = either (const []) id untrkE
+      uncommitted = length staged + length unstaged
       plugins  = _pcPlugins pcfg
       filt     = if st ^. stFilterActive
                  then Just (T.pack $ concat $ E.getEditContents (st ^. stFilterEditor))
@@ -368,6 +402,7 @@ syncDotfiles st = do
     & stUntrackedList .~ L.list RUntrackedList (V.fromList untrkList) 1
     & stAssignedCount .~ length assigned
     & stTotalCount    .~ length tracked
+    & stUncommitted   .~ uncommitted
     & stAhead         .~ ah
     & stBehind        .~ bh
 
@@ -555,6 +590,16 @@ openNewProfilePopup st =
     & stNewProfilePlugins .~ L.list RNewProfilePlugins (V.fromList items) 1
     & stPopup             .~ Just NewProfilePopup
     & stFocus             .~ FNewProfileName
+
+-- | Open package popup with missing packages (all selected by default).
+openPackagePopup :: Distro -> [Text] -> [Text] -> State -> State
+openPackagePopup dist missing caskPkgs st =
+  let items = map (\pkg -> PkgItem pkg True (pkg `elem` caskPkgs)) missing
+  in st
+    & stPkgItems  .~ L.list RPkgList (V.fromList items) 1
+    & stPkgDistro .~ dist
+    & stPopup     .~ Just PackagePopup
+    & stFocus     .~ FPkgList
 
 -- | Split a path into cumulative prefix segments.
 -- e.g. ".some/dir/file.txt" -> [".some", ".some/dir", ".some/dir/file.txt"]

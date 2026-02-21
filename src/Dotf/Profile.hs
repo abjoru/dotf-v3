@@ -12,6 +12,7 @@ module Dotf.Profile (
   deactivateProfile,
 ) where
 
+import           Data.List       (partition)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text       as T
 import           Dotf.Config
@@ -29,11 +30,7 @@ checkCoverage files plugins =
       userFiles = filter (not . isManagedPath) files
       allPluginPaths = concatMap _pluginPaths (Map.elems plugins)
       isAssigned f = any (`isSubpathOf` f) allPluginPaths
-      (assigned, unassigned) = foldr classify ([], []) userFiles
-      classify f (as, us)
-        | isAssigned f = (f:as, us)
-        | otherwise    = (as, f:us)
-  in (assigned, unassigned)
+  in partition isAssigned userFiles
 
 -- | List all profiles with their active status.
 listProfiles :: ProfileConfig -> LocalState -> [(Profile, Bool)]
@@ -102,7 +99,8 @@ deleteProfile env name = do
               pure $ Right ()
 
 -- | Activate a profile: check coverage, resolve deps, set sparse checkout.
-activateProfile :: GitEnv -> ProfileName -> IO (Either DotfError ())
+-- Returns resolved plugin names on success.
+activateProfile :: GitEnv -> ProfileName -> IO (Either DotfError [PluginName])
 activateProfile env name = do
   pcfgResult <- loadPluginConfig env
   prfResult  <- loadProfileConfig env
@@ -137,7 +135,7 @@ activateProfile env name = do
                           Right () -> do
                             let newSt = LocalState (Just name) resolved
                             saveLocalState env newSt
-                            pure $ Right ()
+                            pure $ Right resolved
   where
     getPaths pcfg plugName =
       case Map.lookup plugName (_pcPlugins pcfg) of

@@ -32,25 +32,35 @@ import           Dotf.Types
 
 -- | Topological sort of plugin dependencies.
 -- Returns all plugins needed (including transitive deps) in install order.
--- Uses Set for O(log n) membership checks on visited/resolved accumulators.
+-- Two-pass: DFS to collect in dependency order, then deduplicate keeping first occurrence.
 resolveDependencies :: Map.Map PluginName Plugin
                     -> [PluginName]
                     -> Either DotfError [PluginName]
-resolveDependencies plugins targets = fmap reverse $ go Set.empty Set.empty [] targets
+resolveDependencies plugins targets = nubKeepFirst <$> go Set.empty targets
   where
-    -- resolvedSet: O(log n) membership; resolvedList: ordered (reversed) output
-    go _          _           resolvedList []     = Right resolvedList
-    go visitedSet resolvedSet resolvedList (x:xs)
-      | Set.member x resolvedSet = go visitedSet resolvedSet resolvedList xs
-      | Set.member x visitedSet  = Left $ DependencyError $
-          T.concat ["Circular dependency detected involving: ", x]
+    go _       []     = Right []
+    go visited (x:xs)
+      | Set.member x visited = go visited xs
       | otherwise = case Map.lookup x plugins of
           Nothing -> Left $ PluginNotFound x
           Just p  -> do
-            -- Process deps with x marked as visited (cycle guard)
-            depsResolved <- go (Set.insert x visitedSet) resolvedSet resolvedList (_pluginDepends p)
-            -- Now process remaining targets with x and its deps added to resolved
-            go visitedSet (Set.insert x resolvedSet) (x : depsResolved) xs
+            let visited' = Set.insert x visited
+            -- Check for cycles: deps that are already being visited
+            let depCycles = filter (`Set.member` visited') (_pluginDepends p)
+            case depCycles of
+              (c:_) -> Left $ DependencyError $
+                T.concat ["Circular dependency detected involving: ", c]
+              [] -> do
+                deps <- go visited' (_pluginDepends p)
+                rest <- go (Set.union visited' (Set.fromList (map fst (zip deps deps)))) xs
+                pure $ deps ++ [x] ++ rest
+
+    nubKeepFirst = go' Set.empty
+      where
+        go' _    []     = []
+        go' seen (y:ys)
+          | Set.member y seen = go' seen ys
+          | otherwise         = y : go' (Set.insert y seen) ys
 
 -- | Check if removing plugins is safe (no installed dependents remain).
 checkRemoveSafety :: Map.Map PluginName Plugin
@@ -130,7 +140,7 @@ createPlugin env name desc = do
       if Map.member name (_pcPlugins cfg)
       then pure $ Left $ ValidationError $ T.concat ["Plugin already exists: ", name]
       else do
-        let newPlugin = Plugin name desc [] [] Nothing
+        let newPlugin = Plugin name desc [] [] Nothing [] [] []
             newCfg = cfg { _pcPlugins = Map.insert name newPlugin (_pcPlugins cfg) }
         savePluginConfig env newCfg
         pure $ Right ()
@@ -166,7 +176,8 @@ installPlugins env names = do
         Right st -> case resolveDependencies (_pcPlugins cfg) names of
           Left err -> pure $ Left err
           Right resolved -> do
-            let allToInstall = filter (`notElem` _lsInstalledPlugins st) resolved
+            let installedSet = Set.fromList (_lsInstalledPlugins st)
+                allToInstall = filter (`Set.notMember` installedSet) resolved
                 allInstalled = _lsInstalledPlugins st ++ allToInstall
                 allPaths = concatMap (pluginPathsFor cfg) allInstalled
                 sparseTargets = managedPaths ++ allPaths
@@ -191,7 +202,8 @@ removePlugins env names = do
         Right st -> case checkRemoveSafety (_pcPlugins cfg) (_lsInstalledPlugins st) names of
           Left err -> pure $ Left err
           Right () -> do
-            let remaining = filter (`notElem` names) (_lsInstalledPlugins st)
+            let removeSet = Set.fromList names
+                remaining = filter (`Set.notMember` removeSet) (_lsInstalledPlugins st)
                 allPaths = concatMap (pluginPathsFor cfg) remaining
                 sparseTargets = managedPaths ++ allPaths
             result <- gitSparseCheckoutSet env sparseTargets

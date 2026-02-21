@@ -16,8 +16,8 @@ spec = do
     it "every file in exactly one bucket" $ hedgehog $ do
       files <- forAll $ Gen.list (Range.linear 0 20) genRelPath
       let plugins = Map.fromList
-            [ ("shell", Plugin "shell" Nothing [".zshrc", ".zprofile"] [] Nothing)
-            , ("nvim",  Plugin "nvim"  Nothing [".config/nvim/"]       [] Nothing)
+            [ ("shell", Plugin "shell" Nothing [".zshrc", ".zprofile"] [] Nothing [] [] [])
+            , ("nvim",  Plugin "nvim"  Nothing [".config/nvim/"]       [] Nothing [] [] [])
             ]
           watchPaths = [".config/", ".local/bin/"]
           (plugScoped, wl) = classifyUntracked files plugins watchPaths
@@ -29,7 +29,7 @@ spec = do
     it "files under plugin paths go to plugin bucket" $ do
       let files = [".config/nvim/newplugin.lua"]
           plugins = Map.fromList
-            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing)
+            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing [] [] [])
             ]
           (plugScoped, wl) = classifyUntracked files plugins [".config/"]
       Map.lookup "nvim" plugScoped `shouldBe` Just [".config/nvim/newplugin.lua"]
@@ -44,7 +44,7 @@ spec = do
     it "no watchlist -> only plugin-scoped" $ do
       let files = [".config/nvim/foo.lua", ".random/file"]
           plugins = Map.fromList
-            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing)
+            [ ("nvim", Plugin "nvim" Nothing [".config/nvim/"] [] Nothing [] [] [])
             ]
           (plugScoped, wl) = classifyUntracked files plugins []
       Map.lookup "nvim" plugScoped `shouldBe` Just [".config/nvim/foo.lua"]

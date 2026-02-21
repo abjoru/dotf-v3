@@ -79,6 +79,12 @@ dispatchWithRepo env Pull                              = runPull env
 dispatchWithRepo env Status                            = runStatus env
 dispatchWithRepo env Diff                              = runDiff env
 dispatchWithRepo env (GitRaw args)                     = runGitRaw env args
+dispatchWithRepo env (Packages install)                = runPackages env install
+dispatchWithRepo env SuggestIgnore                     = runSuggestIgnore env
+dispatchWithRepo env SuggestAssign                     = runSuggestAssign env
+dispatchWithRepo env Resolve                           = runResolveConflicts env
 
--- Catch-all (shouldn't happen with exhaustive patterns)
-dispatchWithRepo _ _ = putStrLn "Unknown command" >> exitFailure
+-- Handled in dispatch before dispatchWithRepo is reached
+dispatchWithRepo _ (Init _ _)                          = pure ()
+dispatchWithRepo _ New                                 = pure ()
+dispatchWithRepo _ Migrate                             = pure ()

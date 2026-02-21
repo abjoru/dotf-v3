@@ -74,8 +74,8 @@ spec = do
     it "passes clean config" $ do
       let cfg = PluginConfig
             (Map.fromList
-              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing)
-              , ("b", Plugin "b" Nothing [".gitconfig"] [] Nothing)
+              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing [] [] [])
+              , ("b", Plugin "b" Nothing [".gitconfig"] [] Nothing [] [] [])
               ])
             (Watchlist [])
       validatePluginConfig cfg `shouldBe` Right ()
@@ -83,8 +83,8 @@ spec = do
     it "rejects duplicate paths" $ do
       let cfg = PluginConfig
             (Map.fromList
-              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing)
-              , ("b", Plugin "b" Nothing [".zshrc"] [] Nothing)
+              [ ("a", Plugin "a" Nothing [".zshrc"] [] Nothing [] [] [])
+              , ("b", Plugin "b" Nothing [".zshrc"] [] Nothing [] [] [])
               ])
             (Watchlist [])
       case validatePluginConfig cfg of

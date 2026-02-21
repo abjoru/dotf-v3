@@ -7,14 +7,17 @@ import           Brick                  (BrickEvent (..), suspendAndResume,
 import           Brick.Types            (EventM, get, put)
 import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
+import qualified Data.Map.Strict        as Map
+import           Data.Maybe             (mapMaybe)
 import qualified Data.Text              as T
+import           Dotf.Packages
 import           Dotf.Plugin            (installPlugins)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile, pluginsFile)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
-import           Lens.Micro.Mtl         (use, zoom, (.=))
+import           Lens.Micro.Mtl         (use, zoom, (%=), (.=))
 
 -- | Handle events in Plugins tab.
 handlePluginsEvent :: BrickEvent RName DEvent -> EventM RName State ()
@@ -51,8 +54,19 @@ handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'i') [])) = do
       case result of
         Left err -> stError .= Just [displayError err]
         Right () -> do
+          -- Check for missing OS packages
+          dist <- liftIO detectDistro
+          let pcfg = st ^. stPluginConfig
+              names = [_pluginName p]
+              plugins = mapMaybe (\n -> Map.lookup n (_pcPlugins pcfg)) names
+              allPkgs = collectPackages dist plugins
+              caskPkgs = collectCaskPackages plugins
+          installed <- liftIO $ listInstalledPackages dist
+          let missing = filterUninstalled installed allPkgs
           st' <- liftIO $ syncPlugins st
-          put st'
+          if null missing
+            then put st'
+            else put $ openPackagePopup dist missing caskPkgs st'
 
 -- r: remove selected plugin (triggers confirm)
 handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
@@ -61,6 +75,10 @@ handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = do
     Nothing -> pure ()
     Just (p, _) ->
       stConfirm .= Just ("Remove plugin " ++ T.unpack (_pluginName p) ++ "?", ConfirmRemovePlugin (_pluginName p))
+
+-- v: toggle simple/advanced detail view
+handlePluginsEvent (VtyEvent (V.EvKey (V.KChar 'v') [])) =
+  stDetailAdvanced %= not
 
 -- Fallback: delegate to list vi navigation
 handlePluginsEvent (VtyEvent ev) = navList ev

@@ -33,6 +33,14 @@ module Dotf.Commands (
   runWatchlistRemove,
   runWatchlistList,
 
+  -- * Package commands
+  runPackages,
+
+  -- * AI-assisted commands
+  runSuggestIgnore,
+  runSuggestAssign,
+  runResolveConflicts,
+
   -- * Maintenance commands
   runConsolidate,
 
@@ -48,13 +56,15 @@ module Dotf.Commands (
   runGitRaw,
 ) where
 
-import           Control.Monad        (when)
+import           Control.Monad        (unless, when)
 import qualified Data.Map.Strict      as Map
-import           Data.Maybe           (fromMaybe)
+import           Data.Maybe           (fromMaybe, mapMaybe)
 import           Data.Text            (Text)
 import qualified Data.Text            as T
+import qualified Data.Text.IO         as TIO
 import           Dotf.Config
 import           Dotf.Git
+import           Dotf.Packages
 import           Dotf.Path            (consolidatePluginPaths,
                                        findMatchingPlugin, isSubpathOf,
                                        normalizePath)
@@ -66,18 +76,21 @@ import           Dotf.Tracking
 import           Dotf.Types
 import           Dotf.Utils
 import           System.Directory     (createDirectoryIfMissing,
-                                       doesDirectoryExist)
+                                       doesDirectoryExist, doesFileExist)
 import           System.Exit          (exitFailure)
+import           System.FilePath      ((</>))
+import           System.IO            (hFlush, hPutStrLn, stderr, stdout)
+import           System.Process       (callProcess)
 import qualified System.Process.Typed as PT
 
 -----------
 -- Setup --
 -----------
 
-runInit :: GitEnv -> String -> Maybe Text -> IO ()
+runInit :: GitEnv -> Text -> Maybe Text -> IO ()
 runInit env url mProfile = do
-  putStrLn $ "Cloning " ++ url ++ "..."
-  result <- gitCloneBare env url
+  putStrLn $ "Cloning " ++ T.unpack url ++ "..."
+  result <- gitCloneBare env (T.unpack url)
   case result of
     Left err -> handleError err
     Right () -> do
@@ -171,7 +184,9 @@ runPluginInstall env names = do
   result <- installPlugins env names
   case result of
     Left err -> handleError err
-    Right () -> putStrLn $ "Installed: " ++ T.unpack (T.intercalate ", " names)
+    Right () -> do
+      putStrLn $ "Installed: " ++ T.unpack (T.intercalate ", " names)
+      offerPackageInstall env names
 
 runPluginRemove :: GitEnv -> [Text] -> IO ()
 runPluginRemove env names = do
@@ -254,7 +269,9 @@ runProfileActivate env name = do
         else pure ()
       exitFailure
     Left err -> handleError err
-    Right () -> putStrLn $ "Activated profile: " ++ T.unpack name
+    Right resolved -> do
+      putStrLn $ "Activated profile: " ++ T.unpack name
+      offerPackageInstall env resolved
 
 runProfileDeactivate :: GitEnv -> IO ()
 runProfileDeactivate env = do
@@ -426,7 +443,7 @@ runConsolidate env apply = do
 -- Save / git commands       --
 ------------------------------
 
-runSave :: GitEnv -> Maybe String -> IO ()
+runSave :: GitEnv -> Maybe Text -> IO ()
 runSave env mMsg = do
   -- Auto-stage all modified tracked files
   stageResult <- gitTrackedUnstaged env
@@ -444,7 +461,7 @@ runSave env mMsg = do
             Right files
               | null files -> putStrLn "Nothing to save."
               | otherwise  -> do
-                  let msg = fromMaybe "dotf save" mMsg
+                  let msg = T.unpack $ fromMaybe "dotf save" mMsg
                   commitResult <- gitCommit env msg
                   case commitResult of
                     Left err -> handleError err
@@ -471,9 +488,9 @@ runUnstage env files = do
     Left err -> handleError err
     Right _  -> putStrLn $ "Unstaged " ++ show (length files) ++ " file(s)"
 
-runCommit :: GitEnv -> Maybe String -> IO ()
+runCommit :: GitEnv -> Maybe Text -> IO ()
 runCommit env mMsg = do
-  let msg = fromMaybe "dotf commit" mMsg
+  let msg = T.unpack $ fromMaybe "dotf commit" mMsg
   result <- gitCommit env msg
   case result of
     Left err -> handleError err
@@ -490,14 +507,24 @@ runPull :: GitEnv -> IO ()
 runPull env = do
   result <- gitPull env
   case result of
-    Left err -> handleError err
     Right () -> putStrLn "Pulled."
+    Left err -> do
+      merging <- hasMergeHead env
+      if merging
+        then do
+          putStrLn "Pull resulted in merge conflicts."
+          runResolveConflicts env
+        else handleError err
 
 runStatus :: GitEnv -> IO ()
 runStatus env = do
   pcfgE <- loadPluginConfig env
-  let pcfg = either (const defaultPluginConfig) id pcfgE
-      paths = scopePaths pcfg
+  pcfg <- case pcfgE of
+    Left err -> do
+      hPutStrLn stderr $ "Warning: " ++ displayError err ++ " (using empty config)"
+      pure defaultPluginConfig
+    Right cfg -> pure cfg
+  let paths = scopePaths pcfg
   result <- gitStatus env paths
   case result of
     Left err -> handleError err
@@ -512,11 +539,264 @@ runDiff env = do
 
 runGitRaw :: GitEnv -> [String] -> IO ()
 runGitRaw env args = do
-  cfg <- gitBare env args
+  let cfg = gitBare env args
   exitCode <- PT.runProcess cfg
   case exitCode of
     PT.ExitSuccess   -> pure ()
     PT.ExitFailure _ -> exitFailure
+
+-----------------------
+-- Package commands  --
+-----------------------
+
+runPackages :: GitEnv -> Bool -> IO ()
+runPackages env install = do
+  dist <- detectDistro
+  case dist of
+    UnsupportedDistro -> putStrLn "Unsupported distro for package management."
+    _ -> do
+      cfgResult <- loadPluginConfig env
+      case cfgResult of
+        Left err -> handleError err
+        Right cfg -> do
+          stResult <- loadLocalState env
+          case stResult of
+            Left err -> handleError err
+            Right st -> do
+              let names = _lsInstalledPlugins st
+                  plugins = mapMaybe (\n -> Map.lookup n (_pcPlugins cfg)) names
+                  allPkgs = collectPackages dist plugins
+                  caskPkgs = collectCaskPackages plugins
+              installed <- listInstalledPackages dist
+              let missing = filterUninstalled installed allPkgs
+              if null allPkgs
+                then putStrLn "No packages defined for active plugins."
+                else do
+                  mapM_ (\p -> putStrLn $ "  " ++ T.unpack p ++
+                    if p `elem` installed then " (installed)" else " (missing)") allPkgs
+                  if install && not (null missing)
+                    then installPackagesCli dist
+                           (filter (`notElem` caskPkgs) missing)
+                           (filter (`elem` caskPkgs) missing)
+                    else unless (null missing) $
+                           putStrLn $ show (length missing) ++ " package(s) missing. Use --install to install."
+
+--------------------------
+-- AI-assisted commands --
+--------------------------
+
+runSuggestIgnore :: GitEnv -> IO ()
+runSuggestIgnore env = do
+  hasClaude <- which "claude"
+  unless hasClaude $ do
+    putStrLn "Error: 'claude' CLI not found on PATH."
+    putStrLn "Install: curl -fsSL https://claude.ai/install.sh | bash"
+    dist <- detectDistro
+    case dist of
+      Arch -> putStrLn "    or:  paru -S claude-code"
+      Osx  -> putStrLn "    or:  brew install --cask claude-code"
+      _    -> pure ()
+    exitFailure
+  let home = _geHome env
+  pcfgE <- loadPluginConfig env
+  pcfg <- case pcfgE of
+    Left err -> do
+      hPutStrLn stderr $ "Warning: " ++ displayError err ++ " (using empty config)"
+      pure defaultPluginConfig
+    Right cfg -> pure cfg
+  let scope = scopePaths pcfg
+  trackedE   <- gitTracked env
+  untrackedE <- gitUntracked env scope
+  let tracked'   = either (const []) id trackedE
+      untracked' = either (const []) id untrackedE
+  ignoreExists <- doesFileExist (gitIgnoreFile env)
+  ignoreContent <- if ignoreExists
+    then T.unpack <$> TIO.readFile (gitIgnoreFile env)
+    else pure ""
+  let context = unlines
+        [ "You are managing dotfiles in a git bare repo (~/.dotf/)."
+        , "HOME: " ++ home
+        , ""
+        , "Current .gitignore:"
+        , "```"
+        , ignoreContent
+        , "```"
+        , ""
+        , "Untracked files (scoped to managed paths):"
+        , unlines (map ("  " ++) untracked')
+        , ""
+        , "Tracked files:"
+        , unlines (map ("  " ++) tracked')
+        , ""
+        , "Present suggestions using AskUserQuestion with multiSelect so the"
+        , "user can pick which patterns to apply. Group patterns by category"
+        , "(e.g. caches, build artifacts, editor files). After the user"
+        , "selects patterns, use Edit to append them to " ++ gitIgnoreFile env ++ "."
+        , ""
+        , "After adding new patterns, do a cleanup pass on the full .gitignore:"
+        , "- Merge redundant entries (e.g. foo/ + foo/bar → foo/)"
+        , "- Replace clusters of similar files with glob patterns"
+        , "- Remove patterns that are subsumed by broader ones"
+        , "- Organize into logical sections with comments"
+        , "Present proposed cleanups via AskUserQuestion before applying."
+        ]
+      initialPrompt = "Analyze the untracked files and suggest "
+        ++ ".gitignore patterns. Use AskUserQuestion to let me pick "
+        ++ "which ones to apply. Then do a cleanup pass on the full "
+        ++ ".gitignore to simplify and organize it."
+  callProcess "claude"
+    [ "--allowedTools", "Bash Read Edit Glob Grep AskUserQuestion"
+    , "--add-dir", home
+    , "--append-system-prompt", context
+    , initialPrompt
+    ]
+
+runSuggestAssign :: GitEnv -> IO ()
+runSuggestAssign env = do
+  hasClaude <- which "claude"
+  unless hasClaude $ do
+    putStrLn "Error: 'claude' CLI not found on PATH."
+    putStrLn "Install: curl -fsSL https://claude.ai/install.sh | bash"
+    dist <- detectDistro
+    case dist of
+      Arch -> putStrLn "    or:  paru -S claude-code"
+      Osx  -> putStrLn "    or:  brew install --cask claude-code"
+      _    -> pure ()
+    exitFailure
+  let home = _geHome env
+  pcfgE <- loadPluginConfig env
+  pcfg <- case pcfgE of
+    Left err -> do
+      hPutStrLn stderr $ "Warning: " ++ displayError err ++ " (using empty config)"
+      pure defaultPluginConfig
+    Right cfg -> pure cfg
+  let scope = scopePaths pcfg
+  trackedE   <- gitTracked env
+  untrackedE <- gitUntracked env scope
+  let tracked'   = either (const []) id trackedE
+      untracked' = either (const []) id untrackedE
+      (_assigned, unassigned) = checkCoverage tracked' (_pcPlugins pcfg)
+  if null unassigned && null untracked'
+    then putStrLn "No unassigned or untracked files."
+    else do
+      let pluginDefs = unlines
+            [ "  " ++ T.unpack name ++ ":"
+              ++ maybe "" (\d -> " " ++ T.unpack d) (_pluginDescription p)
+              ++ "\n    paths: " ++ show (_pluginPaths p)
+            | (name, p) <- Map.toList (_pcPlugins pcfg)
+            ]
+          unassignedSection = if null unassigned then ""
+            else "Unassigned tracked files (in git but no plugin):\n"
+              ++ unlines (map ("  " ++) unassigned) ++ "\n"
+          untrackedSection = if null untracked' then ""
+            else "Untracked files (not in git yet, scoped to managed paths):\n"
+              ++ unlines (map ("  " ++) untracked') ++ "\n"
+          context = unlines
+            [ "You are managing dotfiles in a git bare repo (~/.dotf/)."
+            , "HOME: " ++ home
+            , ""
+            , "Plugin definitions:"
+            , pluginDefs
+            , ""
+            , unassignedSection ++ untrackedSection
+            , "For unassigned files: suggest which plugin they belong to."
+            , "For untracked files: suggest whether to track + assign to a plugin."
+            , "Present suggestions using AskUserQuestion with multiSelect, grouped"
+            , "by target plugin. After the user selects, apply via Bash:"
+            , "  dotf track <file> --plugin <name>"
+            , "This command both tracks (if needed) and assigns in one step."
+            ]
+          initialPrompt = "Analyze the files and suggest plugin assignments. "
+            ++ "Use AskUserQuestion to let me pick which ones to apply, "
+            ++ "then run `dotf track --plugin` for each."
+      callProcess "claude"
+        [ "--allowedTools", "Bash Read Glob Grep AskUserQuestion"
+        , "--add-dir", home
+        , "--append-system-prompt", context
+        , initialPrompt
+        ]
+
+runResolveConflicts :: GitEnv -> IO ()
+runResolveConflicts env = do
+  merging <- hasMergeHead env
+  if not merging
+    then putStrLn "No merge in progress."
+    else do
+      conflictsE <- gitConflictFiles env
+      case conflictsE of
+        Left err -> handleError err
+        Right conflicts
+          | null conflicts -> putStrLn "No conflicted files found."
+          | otherwise -> do
+            hasClaude <- which "claude"
+            if hasClaude
+              then launchConflictResolver env conflicts
+              else do
+                putStrLn "Conflicted files:"
+                mapM_ (\f -> putStrLn $ "  " ++ f) conflicts
+                putStrLn ""
+                putStrLn "Resolve manually, then run:"
+                putStrLn "  dotf git add <file>    # mark resolved"
+                putStrLn "  dotf git commit        # complete merge"
+
+launchConflictResolver :: GitEnv -> [FilePath] -> IO ()
+launchConflictResolver env conflicts = do
+  let home = _geHome env
+  fileContents <- mapM (\f -> do
+    let fullPath = home </> f
+    content <- T.unpack <$> TIO.readFile fullPath
+    pure $ "=== " ++ f ++ " ===\n" ++ content
+    ) conflicts
+  let context = unlines
+        [ "You are resolving merge conflicts in a git bare repo (~/.dotf/)."
+        , "HOME: " ++ home
+        , ""
+        , "Conflicted files:"
+        , unlines fileContents
+        , ""
+        , "For each file, analyze the <<<<<<< / ======= / >>>>>>> conflict markers."
+        , "Present your proposed resolution for each file using AskUserQuestion."
+        , "After user approval, use Edit to resolve the conflict markers."
+        , "Then mark resolved via Bash: dotf git add <file>"
+        , "After all files are resolved, offer to complete the merge via:"
+        , "  Bash: dotf git commit"
+        ]
+      initialPrompt = "Analyze the merge conflicts and present resolution "
+        ++ "options. Use AskUserQuestion for each file, apply via Edit, "
+        ++ "then mark resolved with `dotf git add`."
+  callProcess "claude"
+    [ "--allowedTools", "Bash Read Edit Glob Grep AskUserQuestion"
+    , "--add-dir", home
+    , "--append-system-prompt", context
+    , initialPrompt
+    ]
+
+-- | Offer to install missing OS packages after plugin/profile activation.
+offerPackageInstall :: GitEnv -> [PluginName] -> IO ()
+offerPackageInstall env names = do
+  dist <- detectDistro
+  case dist of
+    UnsupportedDistro -> pure ()
+    _ -> do
+      cfgResult <- loadPluginConfig env
+      case cfgResult of
+        Left _ -> pure ()
+        Right cfg -> do
+          let plugins = mapMaybe (\n -> Map.lookup n (_pcPlugins cfg)) names
+              allPkgs = collectPackages dist plugins
+              caskPkgs = collectCaskPackages plugins
+          installed <- listInstalledPackages dist
+          let missing = filterUninstalled installed allPkgs
+          unless (null missing) $ do
+            putStrLn "Uninstalled packages:"
+            mapM_ (\p -> putStrLn $ "  " ++ T.unpack p) missing
+            putStr "Install? [y/N] "
+            hFlush stdout
+            answer <- getLine
+            when (answer `elem` ["y", "Y"]) $
+              installPackagesCli dist
+                (filter (`notElem` caskPkgs) missing)
+                (filter (`elem` caskPkgs) missing)
 
 -----------
 -- Utils --
