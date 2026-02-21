@@ -67,7 +67,7 @@ import qualified Data.Vector              as V
 import           Dotf.Config
 import           Dotf.Git
 import           Dotf.Path                (isSubpathOf)
-import           Dotf.Plugin              (listPlugins)
+import           Dotf.Plugin              (listPlugins, managedPaths)
 import           Dotf.Profile             (checkCoverage, listProfiles)
 import           Dotf.State
 import           Dotf.Tracking            (classifyUntracked)
@@ -434,9 +434,8 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
 
     -- Group files by plugin
     pluginGroups = Map.mapWithKey (\_ p -> filter (matchesPlugin p) tracked) plugins
-    isMeta f = take (length metaPrefix) f == metaPrefix
-      where metaPrefix = ".config/dotf/"
-    unassigned = filter (\f -> not (isMeta f) && not (any (\p -> matchesPlugin p f) (Map.elems plugins)) && matchFilter f) tracked
+    isManagedPath f = any (\m -> m `isSubpathOf` f) managedPaths
+    unassigned = filter (\f -> not (isManagedPath f) && not (any (\p -> matchesPlugin p f) (Map.elems plugins)) && matchFilter f) tracked
 
     matchesPlugin p fp = any (`isSubpathOf` fp) (_pluginPaths p)
 
