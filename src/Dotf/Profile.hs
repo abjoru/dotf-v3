@@ -25,8 +25,8 @@ import           Dotf.Types
 -- Returns (assigned, unassigned).
 checkCoverage :: [RelPath] -> Map.Map PluginName Plugin -> ([RelPath], [RelPath])
 checkCoverage files plugins =
-  let metaPrefix = ".config/dotf/"
-      userFiles = filter (not . (metaPrefix `isSubpathOf`)) files
+  let isManagedPath f = any (\m -> m `isSubpathOf` f) managedPaths
+      userFiles = filter (not . isManagedPath) files
       allPluginPaths = concatMap _pluginPaths (Map.elems plugins)
       isAssigned f = any (`isSubpathOf` f) allPluginPaths
       (assigned, unassigned) = foldr classify ([], []) userFiles
