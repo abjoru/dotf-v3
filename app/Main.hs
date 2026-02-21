@@ -66,6 +66,9 @@ dispatchWithRepo env (WatchlistCmd (WatchlistAdd p))   = runWatchlistAdd env p
 dispatchWithRepo env (WatchlistCmd (WatchlistRemove p))= runWatchlistRemove env p
 dispatchWithRepo env (WatchlistCmd WatchlistList)      = runWatchlistList env
 
+-- Maintenance
+dispatchWithRepo env (Consolidate apply)               = runConsolidate env apply
+
 -- Save + manual git
 dispatchWithRepo env (Save mMsg)                       = runSave env mMsg
 dispatchWithRepo env (Stage files)                     = runStage env files

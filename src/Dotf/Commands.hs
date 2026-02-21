@@ -33,6 +33,9 @@ module Dotf.Commands (
   runWatchlistRemove,
   runWatchlistList,
 
+  -- * Maintenance commands
+  runConsolidate,
+
   -- * Save / git commands
   runSave,
   runStage,
@@ -52,7 +55,9 @@ import           Data.Text            (Text)
 import qualified Data.Text            as T
 import           Dotf.Config
 import           Dotf.Git
-import           Dotf.Path            (findMatchingPlugin, normalizePath)
+import           Dotf.Path            (consolidatePluginPaths,
+                                       findMatchingPlugin, isSubpathOf,
+                                       normalizePath)
 import           Dotf.Plugin
 import           Dotf.Profile
 import           Dotf.State
@@ -369,6 +374,53 @@ runWatchlistList env = do
     Right paths
       | null paths -> putStrLn "Watchlist is empty."
       | otherwise  -> mapM_ putStrLn paths
+
+--------------------------
+-- Maintenance commands --
+--------------------------
+
+runConsolidate :: GitEnv -> Bool -> IO ()
+runConsolidate env apply = do
+  cfgResult <- loadPluginConfig env
+  case cfgResult of
+    Left err -> handleError err
+    Right cfg -> do
+      let changes = consolidatePluginPaths (_pcPlugins cfg) (_wlPaths (_pcWatchlist cfg))
+      if null changes
+        then putStrLn "Nothing to consolidate."
+        else if apply
+          then do
+            let cfg' = foldr applyChange cfg changes
+            savePluginConfig env cfg'
+            putStrLn "Applied:"
+            mapM_ printChange changes
+          else do
+            putStrLn "Proposed changes (use --apply to write):"
+            mapM_ printChange changes
+  where
+    applyChange (name, _old, new') c =
+      let ps = _pcPlugins c
+      in case Map.lookup name ps of
+           Nothing -> c
+           Just p  -> c { _pcPlugins = Map.insert name (p { _pluginPaths = new' }) ps }
+    printChange (name, old, new') = do
+      putStrLn $ T.unpack name ++ ":"
+      let groups = consolidatedGroups old new'
+      if null groups
+        then putStrLn "  (dedup only)"
+        else mapM_ printGroup groups
+      putStrLn ""
+    printGroup (sources, target) = do
+      let w = maximum (map length sources) + 2
+      mapM_ (\s -> putStrLn $ "  " ++ s ++ replicate (max 1 (w - length s)) ' ' ++ "]") sources
+      putStrLn $ replicate (w + 2) ' ' ++ "] -> " ++ target
+    consolidatedGroups old new' =
+      [ (srcs, t)
+      | t <- new'
+      , t `notElem` old
+      , let srcs = filter (\o -> t `isSubpathOf` o) old
+      , length srcs >= 2
+      ]
 
 ------------------------------
 -- Save / git commands       --

@@ -37,6 +37,8 @@ data Command
   | WatchlistCmd WatchlistCommand
   -- Save
   | Save (Maybe String)
+  -- Maintenance
+  | Consolidate Bool  -- ^ True = apply, False = dry-run
   -- Manual git
   | Stage [FilePath]
   | Unstage [FilePath]
@@ -88,6 +90,7 @@ parseCommand = hsubparser
   <> command "ignore"    (info parseIgnore    (progDesc "Add pattern to .gitignore"))
   <> command "untracked" (info parseUntracked (progDesc "List untracked files"))
   <> command "watchlist" (info parseWatchlist (progDesc "Manage watchlist"))
+  <> command "consolidate" (info parseConsolidate (progDesc "Consolidate plugin paths"))
   <> command "save"      (info parseSave      (progDesc "Auto-stage, commit, push"))
   <> command "stage"     (info parseStage     (progDesc "Stage files"))
   <> command "unstage"   (info parseUnstage   (progDesc "Unstage files"))
@@ -215,6 +218,13 @@ parseWatchlistAdd = WatchlistAdd
 parseWatchlistRemove :: Parser WatchlistCommand
 parseWatchlistRemove = WatchlistRemove
   <$> argument str (metavar "PATH")
+
+parseConsolidate :: Parser Command
+parseConsolidate = Consolidate
+  <$> switch
+      (  long "apply"
+      <> help "Apply changes (default is dry-run)"
+      )
 
 parseSave :: Parser Command
 parseSave = Save
