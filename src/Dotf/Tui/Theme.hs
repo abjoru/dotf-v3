@@ -22,6 +22,7 @@ module Dotf.Tui.Theme (
   attrStatusOk,
   attrStatusDirty,
   attrStatusBehind,
+  attrError,
 ) where
 
 import           Brick                (AttrName, attrName, fg, on)
@@ -74,7 +75,9 @@ theme = newTheme
   -- Status bar
   , (attrStatusOk, fg brightGreen)
   , (attrStatusDirty, withStyle (fg red) bold)
-  , (attrStatusBehind, withStyle (fg brightGreen) bold)
+  , (attrStatusBehind, withStyle (fg brightYellow) bold)
+  -- Error
+  , (attrError, withStyle (fg red) bold)
   ]
   where
     bg = rgbColor (0 :: Integer) 0 0
@@ -114,7 +117,8 @@ attrHelpKey, attrHelpDesc :: AttrName
 attrHelpKey  = attrName "help-key"
 attrHelpDesc = attrName "help-desc"
 
-attrStatusOk, attrStatusDirty, attrStatusBehind :: AttrName
+attrStatusOk, attrStatusDirty, attrStatusBehind, attrError :: AttrName
 attrStatusOk      = attrName "status-ok"
 attrStatusDirty   = attrName "status-dirty"
 attrStatusBehind  = attrName "status-behind"
+attrError         = attrName "error"

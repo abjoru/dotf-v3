@@ -90,7 +90,7 @@ tabContent st = case st ^. stTab of
 
 -- | Error dialog.
 errorDialog :: [String] -> Widget RName
-errorDialog msgs = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " Error ") $
+errorDialog msgs = C.centerLayer $ B.borderWithLabel (withAttr attrError $ str " Error ") $
   padAll 1 $ vBox $ map str (concatMap lines msgs)
 
 -- | Confirm dialog.
@@ -147,9 +147,10 @@ drawAssignPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus 
 
 -- | Render an assign list item.
 renderAssignItem :: Bool -> (PluginName, Bool) -> Widget RName
-renderAssignItem sel (name, _) =
+renderAssignItem sel (name, current) =
   let a = if sel then attrSelItem else attrItem
-  in withAttr a $ str $ "  " ++ show name
+      prefix = if current then "* " else "  "
+  in withAttr a $ str $ prefix ++ show name
 
 -- | Ignore popup: path-level selector.
 drawIgnorePopup :: State -> Widget RName
@@ -188,10 +189,10 @@ drawNewPluginPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFoc
 drawNewProfilePopup :: State -> Widget RName
 drawNewProfilePopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " New Profile ") $
   hLimit 50 $ vLimit 20 $ padAll 1 $ vBox
-    [ withAttr attrBold $ str "Name:"
+    [ withAttr (if st ^. stFocus == FNewProfileName then attrTitleFocus else attrTitle) $ str "Name:"
     , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewProfileName) (st ^. stNewProfileName)
     , str ""
-    , withAttr attrBold $ str "Plugins:"
+    , withAttr (if st ^. stFocus == FNewProfilePlugins then attrTitleFocus else attrTitle) $ str "Plugins:"
     , vLimit 10 $ L.renderList renderToggleItem (st ^. stFocus == FNewProfilePlugins) (st ^. stNewProfilePlugins)
     ]
 

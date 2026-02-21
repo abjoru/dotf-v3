@@ -74,14 +74,14 @@ helpBar st =
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
         , ("a", "Assign"), ("u", "Untrack"), ("I", "Ignore")
-        , ("A", "AI Ignore"), ("G", "AI Assign")
+        , ("A", "AI Gitignore"), ("G", "AI Autofill")
         ]
       pluginsHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
         ]
       pluginsHelp2 =
         [ ("n", "New"), ("e", "Edit"), ("D", "Delete")
-        , ("i", "Install"), ("r", "Remove"), ("v", "Details")
+        , ("i", "Install"), ("r", "Remove"), ("v", "Toggle Details")
         ]
       profilesHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")

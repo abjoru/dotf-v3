@@ -29,8 +29,9 @@ drawPluginsTab st =
       (titleWidget " Plugins " lFocus)
       (L.renderList (renderPluginItem lFocus) lFocus pList)
 
+    adv = st ^. stDetailAdvanced
     detailPane = borderWithLabel
-      (titleWidget " Details " dFocus)
+      (titleWidget (if adv then " Details [+] " else " Details ") dFocus)
       (viewport RPluginDetail Vertical (renderDetail st) <+> fill ' ')
 
 -- | Render a plugin list item.

@@ -31,7 +31,7 @@ drawDotfilesTab st =
       (titleWidget (filterInd ++ " Tracked " ++ show tCount ++ " ") tFocus)
       (L.renderList (renderGroupItem sel tFocus) tFocus tList)
     untrackedPane = borderWithLabel
-      (titleWidget (filterInd ++ " Untracked " ++ show uCount ++ " ") uFocus)
+      (titleWidget (" Untracked " ++ show uCount ++ " ") uFocus)
       (L.renderList (renderUntrackedItem uFocus) uFocus uList)
 
 -- | Render a grouped item in the tracked list.
@@ -65,10 +65,10 @@ renderGroupItem selected cFocus sel (GUnassignedFile fp) =
 renderUntrackedItem :: Bool -> Bool -> UntrackedItem -> Widget RName
 renderUntrackedItem cFocus sel (UPluginHeader name) =
   let a = if cFocus && sel then attrHeaderSel else attrHeader
-  in withAttr a $ str $ T.unpack name
+  in withAttr a $ str $ "# " ++ T.unpack name
 renderUntrackedItem cFocus sel UWatchlistHeader =
   let a = if cFocus && sel then attrHeaderSel else attrHeader
-  in withAttr a $ str "[watchlist]"
+  in withAttr a $ str "# [watchlist]"
 renderUntrackedItem cFocus sel (UPluginFile fp _) =
   let a = if cFocus && sel then attrSelItem else attrItem
   in withAttr a $ str $ "  " ++ fp

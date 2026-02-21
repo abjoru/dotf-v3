@@ -72,7 +72,7 @@ import qualified Data.Vector              as V
 import           Dotf.Config
 import           Dotf.Git
 import           Dotf.Packages            (Distro (..), detectDistro)
-import           Dotf.Path                (isSubpathOf)
+import           Dotf.Path                (findMatchingPlugin, isSubpathOf)
 import           Dotf.Plugin              (listPlugins, managedPaths)
 import           Dotf.Profile             (checkCoverage, listProfiles)
 import           Dotf.State
@@ -553,8 +553,10 @@ openSavePopup st = do
 -- | Open assign popup for the given file(s).
 openAssignPopup :: [RelPath] -> State -> State
 openAssignPopup fps st =
-  let plugins = Map.toAscList $ _pcPlugins (st ^. stPluginConfig)
-      items = map (\(n, _) -> (n, False)) plugins
+  let pluginMap = _pcPlugins (st ^. stPluginConfig)
+      plugins = Map.toAscList pluginMap
+      owners = Set.fromList [ n | fp <- fps, Just n <- [findMatchingPlugin fp pluginMap] ]
+      items = map (\(n, _) -> (n, Set.member n owners)) plugins
   in st
     & stAssignFiles   .~ fps
     & stAssignList    .~ L.list RAssignList (V.fromList items) 1

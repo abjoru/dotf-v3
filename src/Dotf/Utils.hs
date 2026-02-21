@@ -14,16 +14,18 @@ module Dotf.Utils (
 
   -- * IO utilities
   editFile,
+  viewInPager,
   appendToFile,
   which,
   ask,
 ) where
 
-import           Control.Exception       (SomeException, try)
+import           Control.Exception       (SomeException, finally, try)
 import           Data.Maybe              (fromMaybe)
 import           Data.String.Interpolate (i)
 import           Dotf.Types              (GitEnv (..))
-import           System.Directory        (doesFileExist)
+import           System.Directory        (doesFileExist, getTemporaryDirectory,
+                                          removeFile)
 import           System.Environment      (lookupEnv)
 import           System.FilePath         ((</>))
 import           System.IO               (IOMode (WriteMode), hFlush, stdout,
@@ -83,6 +85,15 @@ editFile :: FilePath -> IO ()
 editFile file = do
   editor <- fromMaybe "nvim" <$> lookupEnv "EDITOR"
   callProcess editor [file]
+
+-- | View text content in $PAGER (fallback: less) via temp file.
+viewInPager :: String -> IO ()
+viewInPager content = do
+  tmpDir <- getTemporaryDirectory
+  let tmpFile = tmpDir </> "dotf-pager.tmp"
+  writeFile tmpFile content
+  pager <- fromMaybe "less" <$> lookupEnv "PAGER"
+  callProcess pager [tmpFile] `finally` removeFile tmpFile
 
 -- | Append a line to a file, creating it if needed.
 appendToFile :: String -> FilePath -> IO ()

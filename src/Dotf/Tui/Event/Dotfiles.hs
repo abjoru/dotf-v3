@@ -14,7 +14,7 @@ import           Dotf.Path              (isSubpathOf)
 import           Dotf.Profile           (checkCoverage)
 import           Dotf.Tui.Types
 import           Dotf.Types
-import           Dotf.Utils             (editFile)
+import           Dotf.Utils             (editFile, viewInPager)
 import qualified Graphics.Vty           as V
 import           Lens.Micro             ((&), (.~), (^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
@@ -230,9 +230,7 @@ diffSelected = do
             st' <- syncDotfiles st
             pure $ st' & stError .~ Just [displayError err]
           Right diff' -> do
-            putStrLn diff'
-            putStrLn "\nPress Enter to continue..."
-            _ <- getLine
+            viewInPager diff'
             syncDotfiles st
 
 -- | Get the file path from the currently selected item.
