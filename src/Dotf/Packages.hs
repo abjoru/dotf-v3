@@ -70,10 +70,15 @@ listInstalledPackages Osx = do
 listInstalledPackages UnsupportedDistro = pure []
 
 -- | Filter packages that are not in the installed list.
+-- Handles tap-style names (e.g. "user/tap/formula") by comparing
+-- the formula name (after last '/') against the installed set.
 filterUninstalled :: [Text] -> [Text] -> [Text]
 filterUninstalled installed =
   let installedSet = Set.fromList installed
-  in filter (`Set.notMember` installedSet)
+      formulaName t = case T.splitOn "/" t of
+        [_,_,f] -> f
+        _       -> t
+  in filter (\p -> formulaName p `Set.notMember` installedSet)
 
 -- | Install packages using the appropriate package manager.
 -- First argument: regular packages; second: cask packages (macOS only).

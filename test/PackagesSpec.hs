@@ -55,3 +55,11 @@ spec = do
 
     it "returns empty when all installed" $ do
       filterUninstalled ["a", "b"] ["a", "b"] `shouldBe` []
+
+    it "matches tap-style names against installed formula name" $ do
+      filterUninstalled ["taproom", "models"] ["gromgit/brewtils/taproom", "arimxyer/tap/models"]
+        `shouldBe` []
+
+    it "returns tap-style names when formula not installed" $ do
+      filterUninstalled ["other"] ["gromgit/brewtils/taproom"]
+        `shouldBe` ["gromgit/brewtils/taproom"]
