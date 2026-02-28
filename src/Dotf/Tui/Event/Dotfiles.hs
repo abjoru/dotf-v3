@@ -150,7 +150,7 @@ toggleCollapse = do
     FTracked -> do
       tl <- use stTrackedList
       case L.listSelectedElement tl of
-        Just (_, GHeader name _) -> do
+        Just (_, GHeader name _ _) -> do
           collapsed <- use stCollapsed
           let collapsed' = if Set.member name collapsed
                            then Set.delete name collapsed
@@ -185,7 +185,7 @@ toggleSelect = do
 
 -- | Toggle all files in a plugin group.
 toggleGroupSelect :: GroupItem -> EventM RName State ()
-toggleGroupSelect (GHeader pname _) = do
+toggleGroupSelect (GHeader pname _ _) = do
   st <- get
   let plugins  = _pcPlugins (st ^. stPluginConfig)
       tracked  = st ^. stAllTracked

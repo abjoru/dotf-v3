@@ -37,10 +37,15 @@ drawDotfilesTab st =
 
 -- | Render a grouped item in the tracked list.
 renderGroupItem :: Set.Set RelPath -> Set.Set RelPath -> Bool -> Bool -> GroupItem -> Widget RName
-renderGroupItem _ _ cFocus sel (GHeader name collapsed) =
+renderGroupItem _ _ cFocus sel (GHeader name collapsed dirtyCount) =
   let icon = if collapsed then "+ " else "- "
-      a = if cFocus && sel then attrHeaderSel else attrHeader
-  in withAttr a $ str $ icon ++ T.unpack name
+      dirty = dirtyCount > 0
+      suffix = if dirty then " (" ++ show dirtyCount ++ "*)" else ""
+      a | dirty && cFocus && sel = attrHeaderDirtySel
+        | dirty                  = attrHeaderDirty
+        | cFocus && sel          = attrHeaderSel
+        | otherwise              = attrHeader
+  in withAttr a $ str $ icon ++ T.unpack name ++ suffix
 renderGroupItem _ _ cFocus sel GUnassignedHeader =
   let a = if cFocus && sel then attrHeaderSel else attrHeader
   in withAttr a $ str "- [unassigned]"

@@ -15,6 +15,8 @@ module Dotf.Tui.Theme (
   attrUnstagedSelItem,
   attrHeader,
   attrHeaderSel,
+  attrHeaderDirty,
+  attrHeaderDirtySel,
   attrInstalledItem,
   attrActiveItem,
   attrHelpKey,
@@ -68,6 +70,8 @@ theme = newTheme
   -- Headers
   , (attrHeader, withStyle (fg brightCyan) bold)
   , (attrHeaderSel, withStyle (black `on` brightYellow) bold)
+  , (attrHeaderDirty, withStyle (fg brightYellow) bold)
+  , (attrHeaderDirtySel, withStyle (black `on` brightYellow) bold)
   -- Status indicators
   , (attrInstalledItem, fg brightGreen)
   , (attrActiveItem, withStyle (fg brightGreen) bold)
@@ -110,9 +114,11 @@ attrUnstagedItem, attrUnstagedSelItem :: AttrName
 attrUnstagedItem    = attrName "unstaged-item"
 attrUnstagedSelItem = attrName "unstaged-sel-item"
 
-attrHeader, attrHeaderSel :: AttrName
-attrHeader    = attrName "header"
-attrHeaderSel = attrName "header-sel"
+attrHeader, attrHeaderSel, attrHeaderDirty, attrHeaderDirtySel :: AttrName
+attrHeader         = attrName "header"
+attrHeaderSel      = attrName "header-sel"
+attrHeaderDirty    = attrName "header-dirty"
+attrHeaderDirtySel = attrName "header-dirty-sel"
 
 attrInstalledItem, attrActiveItem :: AttrName
 attrInstalledItem = attrName "installed-item"

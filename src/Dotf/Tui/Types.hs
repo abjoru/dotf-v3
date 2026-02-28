@@ -41,7 +41,7 @@ module Dotf.Tui.Types (
   -- * Lenses
   stEnv, stPluginConfig, stProfileConfig, stLocalState, stAllTracked,
   stTab, stFocus, stPopup,
-  stTrackedList, stUntrackedList, stCollapsed, stSelected,
+  stTrackedList, stUntrackedList, stCollapsed, stSelected, stStagedPairs, stUnstagedPairs,
   stPluginListW, stPluginFiles,
   stProfileListW,
   stSaveItems, stCommitEditor,
@@ -141,7 +141,7 @@ data RName
 
 -- | Grouped item in tracked list: headers or file entries.
 data GroupItem
-  = GHeader PluginName Bool  -- ^ plugin name, collapsed?
+  = GHeader PluginName Bool Int  -- ^ plugin name, collapsed?, dirty count
   | GStaged RelPath PluginName
   | GUnstaged RelPath FileStatus PluginName
   | GTracked RelPath PluginName
@@ -208,6 +208,8 @@ data State = State
   , _stCollapsed         :: Set PluginName
   , _stSelected          :: Set RelPath
   , _stFrozen            :: Set RelPath
+  , _stStagedPairs       :: [(RelPath, FileStatus)]
+  , _stUnstagedPairs     :: [(RelPath, FileStatus)]
 
   -- Plugins tab
   , _stPluginListW       :: L.List RName (Plugin, Bool)
@@ -341,6 +343,8 @@ buildState env = do
     , _stCollapsed     = collapsed
     , _stSelected      = Set.empty
     , _stFrozen        = frozenSet
+    , _stStagedPairs   = stagedStatuses
+    , _stUnstagedPairs = unstagedStatuses
     , _stPluginListW   = L.list RPluginList (V.fromList plugList) 1
     , _stPluginFiles   = fileCache
     , _stProfileListW  = L.list RProfileList (V.fromList profList) 1
@@ -417,6 +421,8 @@ syncDotfiles st = do
 
   pure $ st
     & stAllTracked    .~ tracked
+    & stStagedPairs   .~ stagedStatuses
+    & stUnstagedPairs .~ unstagedStatuses
     & stTrackedList   .~ L.list RTrackedList (V.fromList groupedList) 1
     & stUntrackedList .~ L.list RUntrackedList (V.fromList untrkList) 1
     & stFrozen        .~ frozenSet
@@ -504,7 +510,8 @@ buildGroupedList plugins tracked stagedPairs unstagedPairs collapsed mFilter =
     mkPluginGroup pname files =
       let isCollapsed = Set.member pname collapsed
           filteredFiles = filter matchFilter files
-          header = GHeader pname isCollapsed
+          dirtyCount = length $ filter (\f -> f `Set.member` stagedSet || f `Set.member` unstagedSet) filteredFiles
+          header = GHeader pname isCollapsed dirtyCount
           items  = if isCollapsed then [] else map (\f -> mkFileItem f pname) filteredFiles
       in if null filteredFiles && not isCollapsed
          then []
@@ -524,7 +531,7 @@ rebuildGroupedList mName st =
       filt     = if st ^. stFilterActive
                  then Just (T.pack $ concat $ E.getEditContents (st ^. stFilterEditor))
                  else Nothing
-      items    = buildGroupedList plugins tracked [] [] (st ^. stCollapsed) filt
+      items    = buildGroupedList plugins tracked (st ^. stStagedPairs) (st ^. stUnstagedPairs) (st ^. stCollapsed) filt
       vec      = V.fromList items
       idx      = case mName of
         Nothing -> Nothing
@@ -532,8 +539,8 @@ rebuildGroupedList mName st =
       newList  = L.list RTrackedList vec 1
   in st & stTrackedList .~ maybe newList (\i -> L.listMoveTo i newList) idx
   where
-    isHeader n (GHeader name _) = name == n
-    isHeader _ _                = False
+    isHeader n (GHeader name _ _) = name == n
+    isHeader _ _                  = False
 
 -- | Build untracked file list.
 buildUntrackedList :: Map.Map PluginName Plugin
