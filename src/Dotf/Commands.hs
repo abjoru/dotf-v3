@@ -601,17 +601,23 @@ runPackages env install = do
                   caskPkgs = collectCaskPackages plugins
               installed <- listInstalledPackages dist
               let missing = filterUninstalled installed allPkgs
+              let present = filter (`elem` installed) allPkgs
               if null allPkgs
                 then putStrLn "No packages defined for active plugins."
                 else do
-                  mapM_ (\p -> putStrLn $ "  " ++ T.unpack p ++
-                    if p `elem` installed then " (installed)" else " (missing)") allPkgs
+                  unless (null present) $ do
+                    putStrLn $ "Installed (" ++ show (length present) ++ "):"
+                    mapM_ (\p -> putStrLn $ "  " ++ T.unpack p) present
+                  unless (null missing) $ do
+                    unless (null present) $ putStrLn ""
+                    putStrLn $ "Missing (" ++ show (length missing) ++ "):"
+                    mapM_ (\p -> putStrLn $ "  " ++ T.unpack p) missing
                   if install && not (null missing)
                     then installPackagesCli dist
                            (filter (`notElem` caskPkgs) missing)
                            (filter (`elem` caskPkgs) missing)
                     else unless (null missing) $
-                           putStrLn $ show (length missing) ++ " package(s) missing. Use --install to install."
+                           putStrLn "\nUse --install to install missing packages."
 
 --------------------------
 -- AI-assisted commands --
