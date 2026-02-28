@@ -2,13 +2,17 @@ module Dotf.Tui.Events (
   handleEvent,
 ) where
 
-import           Brick                     (BrickEvent (..), halt)
+import           Brick                     (BrickEvent (..), halt,
+                                            suspendAndResume)
 import           Brick.Types               (EventM, get, put)
 import qualified Brick.Widgets.Edit        as E
+import qualified Brick.Widgets.List        as L
 import           Control.Monad.IO.Class    (liftIO)
 import qualified Data.Set                  as Set
+import           Dotf.Commands             (runSuggestAssign, runSuggestIgnore)
 import           Dotf.Plugin               (deletePlugin, removePlugins)
-import           Dotf.Profile              (deactivateProfile, deleteProfile)
+import           Dotf.Profile              (checkCoverage, deactivateProfile,
+                                            deleteProfile)
 import           Dotf.Tracking             (freezeFile, unfreezeFile,
                                             untrackFile)
 import           Dotf.Tui.Event.Assign     (handleAssignEvent)
@@ -21,7 +25,7 @@ import           Dotf.Tui.Event.Plugins    (handlePluginsEvent)
 import           Dotf.Tui.Event.Profiles   (handleProfilesEvent)
 import           Dotf.Tui.Event.Save       (handleSaveEvent)
 import           Dotf.Tui.Types
-import           Dotf.Types                (displayError)
+import           Dotf.Types                (_pcPlugins, displayError)
 import qualified Graphics.Vty              as V
 import           Lens.Micro                ((^.))
 import           Lens.Micro.Mtl            (use, zoom, (.=))
@@ -51,6 +55,7 @@ handleEvent ev = do
     (_, _, Just NewPluginPopup)  -> handleNewPluginEvent ev
     (_, _, Just NewProfilePopup) -> handleNewProfileEvent ev
     (_, _, Just PackagePopup)    -> handlePackageEvent ev
+    (_, _, Just AiMenuPopup)     -> handleAiMenuEvent ev
 
     -- Global keys (no popup active)
     _ -> handleGlobal ev
@@ -172,6 +177,44 @@ handleFilterPopup (VtyEvent (V.EvKey V.KEnter [])) = do
 handleFilterPopup (VtyEvent ev) =
   zoom stFilterEditor $ E.handleEditorEvent (VtyEvent ev)
 handleFilterPopup _ = pure ()
+
+-- | Handle AI menu popup events.
+handleAiMenuEvent :: BrickEvent RName DEvent -> EventM RName State ()
+handleAiMenuEvent (VtyEvent (V.EvKey V.KEsc [])) = do
+  stPopup .= Nothing
+  stFocus .= FTracked
+handleAiMenuEvent (VtyEvent (V.EvKey V.KEnter [])) = do
+  st <- get
+  let ml = L.listSelectedElement (st ^. stAiMenuList)
+  case ml of
+    Just (_, ("Gitignore", _)) -> do
+      let env = st ^. stEnv
+      stPopup .= Nothing
+      stFocus .= FTracked
+      suspendAndResume $ do
+        runSuggestIgnore env
+        syncDotfiles st
+    Just (_, ("Autofill", _)) -> do
+      let env     = st ^. stEnv
+          pcfg    = st ^. stPluginConfig
+          tracked = st ^. stAllTracked
+          hasUntracked = not $ null $ L.listElements (st ^. stUntrackedList)
+          (_, unassigned) = checkCoverage tracked (_pcPlugins pcfg)
+      if null unassigned && not hasUntracked
+        then do
+          stPopup .= Nothing
+          stFocus .= FTracked
+          stError .= Just ["No unassigned or untracked files."]
+        else do
+          stPopup .= Nothing
+          stFocus .= FTracked
+          suspendAndResume $ do
+            runSuggestAssign env
+            syncDotfiles st
+    _ -> pure ()
+handleAiMenuEvent (VtyEvent ev) =
+  zoom stAiMenuList $ L.handleListEventVi L.handleListEvent ev
+handleAiMenuEvent _ = pure ()
 
 switchTab :: Tab -> EventM RName State ()
 switchTab t = do

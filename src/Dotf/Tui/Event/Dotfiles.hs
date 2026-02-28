@@ -8,10 +8,9 @@ import qualified Brick.Widgets.List     as L
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.Map.Strict        as Map
 import qualified Data.Set               as Set
-import           Dotf.Commands          (runSuggestAssign, runSuggestIgnore)
+import qualified Data.Vector            as Vec
 import           Dotf.Git               (gitDiffFile)
 import           Dotf.Path              (isSubpathOf)
-import           Dotf.Profile           (checkCoverage)
 import           Dotf.Tui.Types
 import           Dotf.Types
 import           Dotf.Utils             (editFile, viewInPager)
@@ -77,27 +76,15 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'f') [])) = do
   stPopup .= Just FilterPopup
   stFocus .= FFilterEditor
 
--- A: AI-assisted gitignore
+-- A: open AI action menu
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'A') [])) = do
-  st <- get
-  let env = st ^. stEnv
-  suspendAndResume $ do
-    runSuggestIgnore env
-    syncDotfiles st
-
--- G: AI-assisted plugin assignment
-handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'G') [])) = do
-  st <- get
-  let env        = st ^. stEnv
-      pcfg       = st ^. stPluginConfig
-      tracked    = st ^. stAllTracked
-      hasUntracked = not $ null $ L.listElements (st ^. stUntrackedList)
-      (_, unassigned) = checkCoverage tracked (_pcPlugins pcfg)
-  if null unassigned && not hasUntracked
-    then stError .= Just ["No unassigned or untracked files."]
-    else suspendAndResume $ do
-           runSuggestAssign env
-           syncDotfiles st
+  let items = L.list RAiMenuList (Vec.fromList
+        [ ("Gitignore", "Suggest .gitignore rules for untracked files")
+        , ("Autofill",  "Auto-assign untracked files to plugins")
+        ]) 1
+  stAiMenuList .= items
+  stPopup .= Just AiMenuPopup
+  stFocus .= FAiMenu
 
 -- z: freeze selected file(s)
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'z') [])) = do

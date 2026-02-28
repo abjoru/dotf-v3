@@ -54,6 +54,7 @@ helpBar st =
         Just NewPluginPopup  -> (newPluginHelp1, [])
         Just NewProfilePopup -> (newProfileHelp1, [])
         Just PackagePopup    -> (packageHelp1, [])
+        Just AiMenuPopup     -> (aiMenuHelp1, [])
         Nothing -> case st ^. stTab of
           DotfilesTab -> (dotfilesHelp1, dotfilesHelp2)
           PluginsTab  -> (pluginsHelp1, pluginsHelp2)
@@ -74,7 +75,7 @@ helpBar st =
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
         , ("a", "Assign"), ("u", "Untrack"), ("I", "Ignore")
-        , ("z", "Freeze"), ("Z", "Unfreeze")
+        , ("z", "Freeze"), ("Z", "Unfreeze"), ("A", "AI")
         ]
       pluginsHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
@@ -114,6 +115,9 @@ helpBar st =
         ]
       packageHelp1 =
         [ ("Space", "Toggle"), ("a", "All"), ("n", "None"), ("Enter", "Install"), ("Esc", "Skip")
+        ]
+      aiMenuHelp1 =
+        [ ("j/k", "Up/Down"), ("Enter", "Run"), ("Esc", "Cancel")
         ]
 
 -- | Render a pane title, highlighted if focused.

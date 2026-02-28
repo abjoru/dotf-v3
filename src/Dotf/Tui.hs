@@ -9,6 +9,7 @@ import qualified Brick.Widgets.Center  as C
 import qualified Brick.Widgets.Edit    as E
 import qualified Brick.Widgets.List    as L
 import qualified Data.Text             as T
+import qualified Data.Vector           as V
 import           Dotf.Tui.Events       (handleEvent)
 import           Dotf.Tui.Tab.Dotfiles (drawDotfilesTab)
 import           Dotf.Tui.Tab.Plugins  (drawPluginsTab)
@@ -51,6 +52,7 @@ chooseCursor st = case st ^. stPopup of
     FNewProfileName -> showCursorNamed RNewProfileName
     _               -> const Nothing
   Just PackagePopup -> const Nothing
+  Just AiMenuPopup  -> const Nothing
   _                 -> neverShowCursor st
 
 -- | Main draw function. Returns popup layer over main layer.
@@ -75,6 +77,7 @@ drawUI st = popupLayer ++ [mainLayer]
           Just NewPluginPopup  -> [drawNewPluginPopup st]
           Just NewProfilePopup -> [drawNewProfilePopup st]
           Just PackagePopup    -> [drawPackagePopup st]
+          Just AiMenuPopup     -> [drawAiMenuPopup st]
           Nothing              -> []
 
 -- | Render tab body.
@@ -223,3 +226,21 @@ renderPkgItem sel item =
   let icon = if _piSelected item then "[x] " else "[ ] "
       a = if sel then attrSelItem else attrItem
   in withAttr a $ str $ icon ++ T.unpack (_piName item)
+
+-- | AI action menu popup.
+drawAiMenuPopup :: State -> Widget RName
+drawAiMenuPopup st =
+  let items = L.listElements (st ^. stAiMenuList)
+      itemW (n, d) = length n + 2 + length d
+      contentW = if V.null items then 20 else V.maximum (V.map itemW items)
+      w = contentW + 2  -- padAll 1
+  in C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " AI ") $
+       hLimit w $ vLimit 8 $ padAll 1 $
+       L.renderList renderAiItem True (st ^. stAiMenuList)
+
+-- | Render an AI menu item.
+renderAiItem :: Bool -> (String, String) -> Widget RName
+renderAiItem sel (name, desc) =
+  let a = if sel then attrSelItem else attrItem
+      d = if sel then attrSelItem else attrHelpDesc
+  in withAttr a $ str name <+> str "  " <+> withAttr d (str desc)

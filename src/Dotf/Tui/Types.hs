@@ -49,6 +49,7 @@ module Dotf.Tui.Types (
   stIgnoreList,
   stNewPluginName, stNewPluginDesc,
   stNewProfileName, stNewProfilePlugins,
+  stAiMenuList,
   stPkgItems, stPkgDistro,
   stDetailAdvanced,
   stFrozen,
@@ -109,9 +110,10 @@ data Focus
   | FNewProfileName
   | FNewProfilePlugins
   | FPkgList
+  | FAiMenu
   deriving (Eq, Show, Ord)
 
-data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup
+data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup | AiMenuPopup
   deriving (Eq, Show, Ord)
 
 -- | Resource names for Brick widgets.
@@ -133,6 +135,7 @@ data RName
   | RNewProfileName
   | RNewProfilePlugins
   | RPkgList
+  | RAiMenuList
   deriving (Eq, Show, Ord)
 
 -- | Grouped item in tracked list: headers or file entries.
@@ -228,6 +231,9 @@ data State = State
   -- New plugin popup
   , _stNewPluginName     :: E.Editor String RName
   , _stNewPluginDesc     :: E.Editor String RName
+
+  -- AI menu popup
+  , _stAiMenuList        :: L.List RName (String, String)
 
   -- Package popup
   , _stPkgItems          :: L.List RName PkgItem
@@ -344,6 +350,7 @@ buildState env = do
     , _stAssignEditing = False
     , _stAssignEditor  = E.editor RAssignEditor (Just 1) ""
     , _stIgnoreList    = L.list RIgnoreList V.empty 1
+    , _stAiMenuList       = L.list RAiMenuList V.empty 1
     , _stPkgItems         = L.list RPkgList V.empty 1
     , _stPkgDistro        = dist
     , _stDetailAdvanced   = False
