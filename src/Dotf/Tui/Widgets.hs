@@ -55,6 +55,7 @@ helpBar st =
         Just NewProfilePopup -> (newProfileHelp1, [])
         Just PackagePopup    -> (packageHelp1, [])
         Just AiMenuPopup     -> (aiMenuHelp1, [])
+        Just HelpPopup       -> (helpPopupHelp1, [])
         Nothing -> case st ^. stTab of
           DotfilesTab -> (dotfilesHelp1, dotfilesHelp2)
           PluginsTab  -> (pluginsHelp1, pluginsHelp2)
@@ -70,7 +71,7 @@ helpBar st =
       dotfilesHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus")
         , ("f/F", "Filter/Clear"), ("Space", "Select")
-        , ("Ret", "Collapse"), ("q", "Quit")
+        , ("Ret", "Collapse"), ("?", "Help"), ("q", "Quit")
         ]
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
@@ -78,14 +79,14 @@ helpBar st =
         , ("z", "Freeze"), ("Z", "Unfreeze"), ("A", "AI")
         ]
       pluginsHelp1 =
-        [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
+        [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("?", "Help"), ("q", "Quit")
         ]
       pluginsHelp2 =
         [ ("n", "New"), ("e", "Edit"), ("D", "Delete")
         , ("i", "Install"), ("r", "Remove"), ("v", "Toggle Details")
         ]
       profilesHelp1 =
-        [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")
+        [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("?", "Help"), ("q", "Quit")
         ]
       profilesHelp2 =
         [ ("n", "New"), ("e", "Edit"), ("D", "Delete")
@@ -118,6 +119,9 @@ helpBar st =
         ]
       aiMenuHelp1 =
         [ ("j/k", "Up/Down"), ("Enter", "Run"), ("Esc", "Cancel")
+        ]
+      helpPopupHelp1 =
+        [ ("j/k", "Scroll"), ("C-d/C-u", "Page"), ("?/Esc", "Close")
         ]
 
 -- | Render a pane title, highlighted if focused.

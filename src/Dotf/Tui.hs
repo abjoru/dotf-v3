@@ -53,6 +53,7 @@ chooseCursor st = case st ^. stPopup of
     _               -> const Nothing
   Just PackagePopup -> const Nothing
   Just AiMenuPopup  -> const Nothing
+  Just HelpPopup    -> const Nothing
   _                 -> neverShowCursor st
 
 -- | Main draw function. Returns popup layer over main layer.
@@ -78,6 +79,7 @@ drawUI st = popupLayer ++ [mainLayer]
           Just NewProfilePopup -> [drawNewProfilePopup st]
           Just PackagePopup    -> [drawPackagePopup st]
           Just AiMenuPopup     -> [drawAiMenuPopup st]
+          Just HelpPopup       -> [drawHelpOverlay]
           Nothing              -> []
 
 -- | Render tab body.
@@ -244,3 +246,112 @@ renderAiItem sel (name, desc) =
   let a = if sel then attrSelItem else attrItem
       d = if sel then attrSelItem else attrHelpDesc
   in withAttr a $ str name <+> str "  " <+> withAttr d (str desc)
+
+-- | Full-screen scrollable help overlay.
+drawHelpOverlay :: Widget RName
+drawHelpOverlay =
+  B.borderWithLabel (withAttr attrTitleFocus $ str " Help ") $
+    padAll 1 $ viewport RHelpViewport Vertical $ vBox
+      [ helpSection "Global" globalKeys
+      , helpSection "Dotfiles Tab" dotfilesKeys
+      , helpSection "Plugins Tab" pluginsKeys
+      , helpSection "Profiles Tab" profilesKeys
+      , helpSection "Save Popup" saveKeys
+      , helpSection "Assign Popup" assignKeys
+      , helpSection "Filter Popup" filterKeys
+      , helpSection "Ignore Popup" ignoreKeys
+      , helpSection "New Plugin Popup" newPluginKeys
+      , helpSection "New Profile Popup" newProfileKeys
+      , helpSection "Package Popup" packageKeys
+      , helpSection "AI Menu Popup" aiMenuKeys
+      ]
+  where
+    helpSection title items =
+      vBox $ withAttr attrHeader (str $ "── " ++ title ++ " ──")
+           : map renderRow items ++ [str " "]
+    renderRow (k, d) =
+      withAttr attrHelpKey (str $ padKey k) <+> str d
+    padKey k = k ++ replicate (12 - length k) ' '
+
+    globalKeys =
+      [ ("q",     "Quit")
+      , ("?",     "Toggle this help")
+      , ("1/2/3", "Switch to Dotfiles/Plugins/Profiles tab")
+      , ("Tab",   "Cycle focus forward")
+      , ("S-Tab", "Cycle focus backward")
+      ]
+    dotfilesKeys =
+      [ ("j/k",   "Move cursor down/up")
+      , ("Space", "Select/deselect file")
+      , ("Enter", "Collapse/expand plugin group")
+      , ("e",     "Edit file in $EDITOR")
+      , ("d",     "Diff file against HEAD")
+      , ("s",     "Open save (commit+push) popup")
+      , ("a",     "Assign file(s) to plugin")
+      , ("u",     "Untrack selected file(s)")
+      , ("I",     "Add path to .gitignore")
+      , ("f",     "Open filter popup")
+      , ("F",     "Clear active filter")
+      , ("z",     "Freeze selected (skip-worktree)")
+      , ("Z",     "Unfreeze selected")
+      , ("A",     "Open AI actions menu")
+      ]
+    pluginsKeys =
+      [ ("j/k", "Move cursor down/up")
+      , ("n",   "Create new plugin")
+      , ("e",   "Edit plugin in $EDITOR")
+      , ("D",   "Delete plugin definition")
+      , ("i",   "Install plugin packages")
+      , ("r",   "Remove plugin and untrack files")
+      , ("v",   "Toggle advanced detail view")
+      ]
+    profilesKeys =
+      [ ("j/k", "Move cursor down/up")
+      , ("n",   "Create new profile")
+      , ("e",   "Edit profile in $EDITOR")
+      , ("D",   "Delete profile")
+      , ("a",   "Activate profile")
+      , ("x",   "Deactivate current profile")
+      ]
+    saveKeys =
+      [ ("Space", "Toggle file selection")
+      , ("Tab",   "Switch between file list and editor")
+      , ("Enter", "Commit and push")
+      , ("Esc",   "Cancel")
+      ]
+    assignKeys =
+      [ ("Enter", "Assign file(s) to selected plugin")
+      , ("+",     "Create new plugin inline")
+      , ("Esc",   "Cancel")
+      ]
+    filterKeys =
+      [ ("Enter", "Apply filter")
+      , ("Esc",   "Cancel and clear")
+      ]
+    ignoreKeys =
+      [ ("Enter", "Add selected path to .gitignore")
+      , ("Esc",   "Cancel")
+      ]
+    newPluginKeys =
+      [ ("Tab",   "Switch between name and description")
+      , ("Enter", "Create plugin")
+      , ("Esc",   "Cancel")
+      ]
+    newProfileKeys =
+      [ ("Tab",   "Switch between name and plugin list")
+      , ("Space", "Toggle plugin selection")
+      , ("Enter", "Create profile")
+      , ("Esc",   "Cancel")
+      ]
+    packageKeys =
+      [ ("Space", "Toggle package selection")
+      , ("a",     "Select all packages")
+      , ("n",     "Deselect all packages")
+      , ("Enter", "Install selected packages")
+      , ("Esc",   "Skip installation")
+      ]
+    aiMenuKeys =
+      [ ("j/k",   "Move cursor down/up")
+      , ("Enter", "Run selected action")
+      , ("Esc",   "Cancel")
+      ]

@@ -3,7 +3,8 @@ module Dotf.Tui.Events (
 ) where
 
 import           Brick                     (BrickEvent (..), halt,
-                                            suspendAndResume)
+                                            suspendAndResume, vScrollBy,
+                                            viewportScroll)
 import           Brick.Types               (EventM, get, put)
 import qualified Brick.Widgets.Edit        as E
 import qualified Brick.Widgets.List        as L
@@ -56,6 +57,7 @@ handleEvent ev = do
     (_, _, Just NewProfilePopup) -> handleNewProfileEvent ev
     (_, _, Just PackagePopup)    -> handlePackageEvent ev
     (_, _, Just AiMenuPopup)     -> handleAiMenuEvent ev
+    (_, _, Just HelpPopup)       -> handleHelpEvent ev
 
     -- Global keys (no popup active)
     _ -> handleGlobal ev
@@ -68,6 +70,8 @@ handleGlobal (VtyEvent (V.EvKey (V.KChar '2') [])) = switchTab PluginsTab
 handleGlobal (VtyEvent (V.EvKey (V.KChar '3') [])) = switchTab ProfilesTab
 handleGlobal (VtyEvent (V.EvKey (V.KChar '\t') [])) = cycleFocusForward
 handleGlobal (VtyEvent (V.EvKey V.KBackTab [])) = cycleFocusBackward
+handleGlobal (VtyEvent (V.EvKey (V.KChar '?') [])) = do
+  stPopup .= Just HelpPopup
 handleGlobal ev = do
   t <- use stTab
   case t of
@@ -215,6 +219,29 @@ handleAiMenuEvent (VtyEvent (V.EvKey V.KEnter [])) = do
 handleAiMenuEvent (VtyEvent ev) =
   zoom stAiMenuList $ L.handleListEventVi L.handleListEvent ev
 handleAiMenuEvent _ = pure ()
+
+-- | Handle help overlay events.
+handleHelpEvent :: BrickEvent RName DEvent -> EventM RName State ()
+handleHelpEvent (VtyEvent (V.EvKey V.KEsc []))               = closeHelp
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar 'q') []))        = closeHelp
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar '?') []))        = closeHelp
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar 'j') []))        = helpScroll 1
+handleHelpEvent (VtyEvent (V.EvKey V.KDown []))              = helpScroll 1
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar 'k') []))        = helpScroll (-1)
+handleHelpEvent (VtyEvent (V.EvKey V.KUp []))                = helpScroll (-1)
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar 'd') [V.MCtrl])) = helpScroll 10
+handleHelpEvent (VtyEvent (V.EvKey V.KPageDown []))          = helpScroll 10
+handleHelpEvent (VtyEvent (V.EvKey (V.KChar 'u') [V.MCtrl])) = helpScroll (-10)
+handleHelpEvent (VtyEvent (V.EvKey V.KPageUp []))            = helpScroll (-10)
+handleHelpEvent _                                            = pure ()
+
+closeHelp :: EventM RName State ()
+closeHelp = stPopup .= Nothing
+
+helpScroll :: Int -> EventM RName State ()
+helpScroll n = do
+  let vp = viewportScroll RHelpViewport
+  vScrollBy vp n
 
 switchTab :: Tab -> EventM RName State ()
 switchTab t = do

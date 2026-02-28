@@ -113,7 +113,7 @@ data Focus
   | FAiMenu
   deriving (Eq, Show, Ord)
 
-data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup | AiMenuPopup
+data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup | AiMenuPopup | HelpPopup
   deriving (Eq, Show, Ord)
 
 -- | Resource names for Brick widgets.
@@ -136,6 +136,7 @@ data RName
   | RNewProfilePlugins
   | RPkgList
   | RAiMenuList
+  | RHelpViewport
   deriving (Eq, Show, Ord)
 
 -- | Grouped item in tracked list: headers or file entries.
