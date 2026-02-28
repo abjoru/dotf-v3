@@ -61,6 +61,11 @@ dispatchWithRepo env (Untrack path)                    = runUntrack env path
 dispatchWithRepo env (Ignore pattern')                 = runIgnore env pattern'
 dispatchWithRepo env (Untracked mPlugin)               = runUntracked env mPlugin
 
+-- Freeze
+dispatchWithRepo env (Freeze path)                     = runFreeze env path
+dispatchWithRepo env (Unfreeze path)                   = runUnfreeze env path
+dispatchWithRepo env Frozen                             = runFrozen env
+
 -- Watchlist
 dispatchWithRepo env (WatchlistCmd (WatchlistAdd p))   = runWatchlistAdd env p
 dispatchWithRepo env (WatchlistCmd (WatchlistRemove p))= runWatchlistRemove env p

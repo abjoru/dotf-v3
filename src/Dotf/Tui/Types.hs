@@ -51,6 +51,7 @@ module Dotf.Tui.Types (
   stNewProfileName, stNewProfilePlugins,
   stPkgItems, stPkgDistro,
   stDetailAdvanced,
+  stFrozen,
   stFilterEditor, stFilterActive,
   stConfirm,
   stUncommitted, stAhead, stBehind, stAssignedCount, stTotalCount,
@@ -76,7 +77,7 @@ import           Dotf.Path                (findMatchingPlugin, isSubpathOf)
 import           Dotf.Plugin              (listPlugins, managedPaths)
 import           Dotf.Profile             (checkCoverage, listProfiles)
 import           Dotf.State
-import           Dotf.Tracking            (classifyUntracked)
+import           Dotf.Tracking            (classifyUntracked, listFrozen)
 import           Dotf.Types
 import           Lens.Micro               ((&), (.~), (^.))
 import           Lens.Micro.TH            (makeLenses)
@@ -177,6 +178,8 @@ data ConfirmAction
   | ConfirmRemovePlugin PluginName
   | ConfirmDeleteProfile ProfileName
   | ConfirmDeactivateProfile
+  | ConfirmFreeze [RelPath]
+  | ConfirmUnfreeze [RelPath]
   deriving (Eq, Show)
 
 -----------
@@ -200,6 +203,7 @@ data State = State
   , _stUntrackedList     :: L.List RName UntrackedItem
   , _stCollapsed         :: Set PluginName
   , _stSelected          :: Set RelPath
+  , _stFrozen            :: Set RelPath
 
   -- Plugins tab
   , _stPluginListW       :: L.List RName (Plugin, Bool)
@@ -288,6 +292,9 @@ buildState env = do
       (concurrently (gitTrackedUnstaged env) (gitUntracked env untrackedScope))
       (concurrently (gitAhead env) (gitBehind env))
 
+  frozenE <- listFrozen env
+  let frozenSet = Set.fromList $ either (const []) id frozenE
+
   let tracked  = either (const []) id trackedE
       staged   = either (const []) id stagedE
       unstaged = either (const []) id unstagedE
@@ -326,6 +333,7 @@ buildState env = do
     , _stUntrackedList = L.list RUntrackedList (V.fromList untrkList) 1
     , _stCollapsed     = collapsed
     , _stSelected      = Set.empty
+    , _stFrozen        = frozenSet
     , _stPluginListW   = L.list RPluginList (V.fromList plugList) 1
     , _stPluginFiles   = fileCache
     , _stProfileListW  = L.list RProfileList (V.fromList profList) 1
@@ -392,6 +400,9 @@ syncDotfiles st = do
   stagedStatuses <- mapM (checkStatus env) staged
   unstagedStatuses <- mapM (checkStatus env) unstaged
 
+  frozenE <- listFrozen env
+  let frozenSet = Set.fromList $ either (const []) id frozenE
+
   let groupedList = buildGroupedList plugins tracked stagedStatuses unstagedStatuses (st ^. stCollapsed) filt
       untrkList   = buildUntrackedList plugins (_wlPaths $ _pcWatchlist pcfg) untrk
       (assigned, _) = checkCoverage tracked plugins
@@ -400,6 +411,7 @@ syncDotfiles st = do
     & stAllTracked    .~ tracked
     & stTrackedList   .~ L.list RTrackedList (V.fromList groupedList) 1
     & stUntrackedList .~ L.list RUntrackedList (V.fromList untrkList) 1
+    & stFrozen        .~ frozenSet
     & stAssignedCount .~ length assigned
     & stTotalCount    .~ length tracked
     & stUncommitted   .~ uncommitted

@@ -49,6 +49,9 @@ data Command
   | Diff
   | GitRaw [String]
   | Packages Bool  -- ^ True = install, False = list only
+  | Freeze FilePath
+  | Unfreeze FilePath
+  | Frozen
   | SuggestIgnore
   | SuggestAssign
   | Resolve
@@ -104,6 +107,9 @@ parseCommand = hsubparser
   <> command "status"    (info (pure Status)  (progDesc "Show git status"))
   <> command "diff"      (info (pure Diff)    (progDesc "Show git diff"))
   <> command "git"       (info parseGitRaw    (progDesc "Raw git passthrough"))
+  <> command "freeze"    (info parseFreeze    (progDesc "Freeze a tracked file (skip-worktree)"))
+  <> command "unfreeze"  (info parseUnfreeze  (progDesc "Unfreeze a frozen file"))
+  <> command "frozen"    (info (pure Frozen)  (progDesc "List all frozen files"))
   <> command "packages"  (info parsePackages  (progDesc "List/install OS packages for active plugins"))
   <> command "suggest-ignore" (info (pure SuggestIgnore) (progDesc "AI-assisted gitignore management"))
   <> command "suggest-assign" (info (pure SuggestAssign) (progDesc "AI-assisted file-to-plugin assignment"))
@@ -226,6 +232,14 @@ parseWatchlistAdd = WatchlistAdd
 parseWatchlistRemove :: Parser WatchlistCommand
 parseWatchlistRemove = WatchlistRemove
   <$> argument str (metavar "PATH")
+
+parseFreeze :: Parser Command
+parseFreeze = Freeze
+  <$> argument str (metavar "FILE")
+
+parseUnfreeze :: Parser Command
+parseUnfreeze = Unfreeze
+  <$> argument str (metavar "FILE")
 
 parseConsolidate :: Parser Command
 parseConsolidate = Consolidate

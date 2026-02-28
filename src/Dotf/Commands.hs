@@ -28,6 +28,11 @@ module Dotf.Commands (
   runIgnore,
   runUntracked,
 
+  -- * Freeze commands
+  runFreeze,
+  runUnfreeze,
+  runFrozen,
+
   -- * Watchlist commands
   runWatchlistAdd,
   runWatchlistRemove,
@@ -364,6 +369,33 @@ runUntracked env mPlugin = case mPlugin of
     printPluginGroup (name, files) = do
       putStrLn $ T.unpack name ++ ":"
       mapM_ (\f -> putStrLn $ "  " ++ f) files
+
+---------------------
+-- Freeze commands --
+---------------------
+
+runFreeze :: GitEnv -> FilePath -> IO ()
+runFreeze env path = do
+  result <- freezeFile env path
+  case result of
+    Left err -> handleError err
+    Right () -> putStrLn $ "Frozen: " ++ normalizePath (_geHome env) path
+
+runUnfreeze :: GitEnv -> FilePath -> IO ()
+runUnfreeze env path = do
+  result <- unfreezeFile env path
+  case result of
+    Left err -> handleError err
+    Right () -> putStrLn $ "Unfrozen: " ++ normalizePath (_geHome env) path
+
+runFrozen :: GitEnv -> IO ()
+runFrozen env = do
+  result <- listFrozen env
+  case result of
+    Left err -> handleError err
+    Right fps
+      | null fps  -> putStrLn "No frozen files."
+      | otherwise -> mapM_ putStrLn fps
 
 -----------------------
 -- Watchlist commands --

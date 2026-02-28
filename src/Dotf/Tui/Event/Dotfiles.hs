@@ -99,6 +99,42 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'G') [])) = do
            runSuggestAssign env
            syncDotfiles st
 
+-- z: freeze selected file(s)
+handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'z') [])) = do
+  st <- get
+  let sel     = st ^. stSelected
+      frozen  = st ^. stFrozen
+  if not (Set.null sel)
+    then let fps = filter (\fp -> not (Set.member fp frozen)) (Set.toList sel)
+         in if null fps
+            then stError .= Just ["Selected files already frozen."]
+            else stConfirm .= Just ("Freeze " ++ show (length fps) ++ " files?", ConfirmFreeze fps)
+    else do
+      mPath <- getSelectedPath
+      case mPath of
+        Nothing -> pure ()
+        Just fp
+          | Set.member fp frozen -> stError .= Just [fp ++ " already frozen."]
+          | otherwise -> stConfirm .= Just ("Freeze " ++ fp ++ "?", ConfirmFreeze [fp])
+
+-- Z: unfreeze selected file(s)
+handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'Z') [])) = do
+  st <- get
+  let sel    = st ^. stSelected
+      frozen = st ^. stFrozen
+  if not (Set.null sel)
+    then let fps = filter (`Set.member` frozen) (Set.toList sel)
+         in if null fps
+            then stError .= Just ["Selected files are not frozen."]
+            else stConfirm .= Just ("Unfreeze " ++ show (length fps) ++ " files?", ConfirmUnfreeze fps)
+    else do
+      mPath <- getSelectedPath
+      case mPath of
+        Nothing -> pure ()
+        Just fp
+          | not (Set.member fp frozen) -> stError .= Just [fp ++ " is not frozen."]
+          | otherwise -> stConfirm .= Just ("Unfreeze " ++ fp ++ "?", ConfirmUnfreeze [fp])
+
 -- F: clear filter
 handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'F') [])) = do
   stFilterActive .= False

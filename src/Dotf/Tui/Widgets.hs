@@ -74,7 +74,7 @@ helpBar st =
       dotfilesHelp2 =
         [ ("e", "Edit"), ("d", "Diff"), ("s", "Save")
         , ("a", "Assign"), ("u", "Untrack"), ("I", "Ignore")
-        , ("A", "AI Gitignore"), ("G", "AI Autofill")
+        , ("z", "Freeze"), ("Z", "Unfreeze")
         ]
       pluginsHelp1 =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("q", "Quit")

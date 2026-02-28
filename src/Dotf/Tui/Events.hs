@@ -9,7 +9,8 @@ import           Control.Monad.IO.Class    (liftIO)
 import qualified Data.Set                  as Set
 import           Dotf.Plugin               (deletePlugin, removePlugins)
 import           Dotf.Profile              (deactivateProfile, deleteProfile)
-import           Dotf.Tracking             (untrackFile)
+import           Dotf.Tracking             (freezeFile, unfreezeFile,
+                                            untrackFile)
 import           Dotf.Tui.Event.Assign     (handleAssignEvent)
 import           Dotf.Tui.Event.Dotfiles   (handleDotfilesEvent)
 import           Dotf.Tui.Event.Ignore     (handleIgnoreEvent)
@@ -129,6 +130,28 @@ executeConfirm ConfirmDeactivateProfile = do
     Right () -> do
       st' <- liftIO $ syncAll st
       put st'
+executeConfirm (ConfirmFreeze fps) = do
+  st <- get
+  let env = st ^. stEnv
+  results <- liftIO $ mapM (freezeFile env) fps
+  case [e | Left e <- results] of
+    (err:_) -> stError .= Just [displayError err]
+    []      -> do
+      stSelected .= Set.empty
+      st' <- get
+      st'' <- liftIO $ syncDotfiles st'
+      put st''
+executeConfirm (ConfirmUnfreeze fps) = do
+  st <- get
+  let env = st ^. stEnv
+  results <- liftIO $ mapM (unfreezeFile env) fps
+  case [e | Left e <- results] of
+    (err:_) -> stError .= Just [displayError err]
+    []      -> do
+      stSelected .= Set.empty
+      st' <- get
+      st'' <- liftIO $ syncDotfiles st'
+      put st''
 
 -- | Handle filter popup events.
 handleFilterPopup :: BrickEvent RName DEvent -> EventM RName State ()

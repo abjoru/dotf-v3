@@ -12,6 +12,11 @@ module Dotf.Tracking (
   addWatchPath,
   removeWatchPath,
   listWatchPaths,
+
+  -- * Freeze
+  freezeFile,
+  unfreezeFile,
+  listFrozen,
 ) where
 
 import           Control.Exception (IOException, try)
@@ -231,3 +236,19 @@ listWatchPaths env = do
   case cfgResult of
     Left err  -> pure $ Left err
     Right cfg -> pure $ Right $ _wlPaths (_pcWatchlist cfg)
+
+--------------
+-- Freeze   --
+--------------
+
+-- | Freeze a tracked file (skip-worktree).
+freezeFile :: GitEnv -> RelPath -> IO (Either DotfError ())
+freezeFile env path = gitFreeze env (normalizePath (_geHome env) path)
+
+-- | Unfreeze a frozen file.
+unfreezeFile :: GitEnv -> RelPath -> IO (Either DotfError ())
+unfreezeFile env path = gitUnfreeze env (normalizePath (_geHome env) path)
+
+-- | List all frozen files.
+listFrozen :: GitEnv -> IO (Either DotfError [RelPath])
+listFrozen = gitListFrozen

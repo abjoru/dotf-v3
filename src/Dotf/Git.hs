@@ -41,6 +41,11 @@ module Dotf.Git (
   -- * Passthrough
   gitRaw,
 
+  -- * Freeze (skip-worktree)
+  gitFreeze,
+  gitUnfreeze,
+  gitListFrozen,
+
   -- * Queries
   hasBareRepo,
   hasMergeHead,
@@ -263,6 +268,31 @@ gitRaw env args = do
   case exit of
     PT.ExitSuccess   -> pure $ Right ()
     PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
+
+--------------------------
+-- Freeze (skip-worktree)
+--------------------------
+
+-- | Freeze a file (skip-worktree).
+gitFreeze :: GitEnv -> FilePath -> IO (Either DotfError ())
+gitFreeze env fp = runGit env ["update-index", "--skip-worktree", fp]
+
+-- | Unfreeze a file (no-skip-worktree).
+gitUnfreeze :: GitEnv -> FilePath -> IO (Either DotfError ())
+gitUnfreeze env fp = runGit env ["update-index", "--no-skip-worktree", fp]
+
+-- | List all frozen (skip-worktree) files.
+gitListFrozen :: GitEnv -> IO (Either DotfError [FilePath])
+gitListFrozen env = do
+  let cfg = gitBare env ["ls-files", "-v"]
+  (exit, out, err) <- PT.readProcess cfg
+  case exit of
+    PT.ExitFailure c -> pure $ Left $ GitError c (decodeErr err)
+    PT.ExitSuccess   -> pure $ Right
+      [ drop 2 line'
+      | line' <- lines (C8.unpack out)
+      , take 2 line' == "S "
+      ]
 
 -------------
 -- Queries --
