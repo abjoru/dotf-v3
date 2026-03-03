@@ -246,15 +246,15 @@ gitSparseCheckoutDisable env = runGit env ["sparse-checkout", "disable"]
 
 -- | Get git status, optionally scoped to specific paths.
 gitStatus :: GitEnv -> [FilePath] -> IO (Either DotfError String)
-gitStatus env paths = runGitOutput env (["status", "-sb"] ++ ["--" | not (null paths)] ++ paths)
+gitStatus env paths = runGitOutput env (["status", "-sb", "--color=always"] ++ ["--" | not (null paths)] ++ paths)
 
--- | Get full diff.
+-- | Get full diff (with ANSI color for terminal output).
 gitDiff :: GitEnv -> IO (Either DotfError String)
-gitDiff env = runGitOutput env ["diff"]
+gitDiff env = runGitOutput env ["diff", "--color=always"]
 
--- | Get diff for a single file.
+-- | Get diff for a single file (with ANSI color for pager output).
 gitDiffFile :: GitEnv -> FilePath -> IO (Either DotfError String)
-gitDiffFile env fp = runGitOutput env ["diff", fp]
+gitDiffFile env fp = runGitOutput env ["diff", "--color=always", fp]
 
 -----------------
 -- Passthrough --

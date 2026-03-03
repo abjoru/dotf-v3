@@ -93,7 +93,7 @@ viewInPager content = do
   let tmpFile = tmpDir </> "dotf-pager.tmp"
   writeFile tmpFile content
   pager <- fromMaybe "less" <$> lookupEnv "PAGER"
-  callProcess pager [tmpFile] `finally` removeFile tmpFile
+  callProcess pager ["-R", tmpFile] `finally` removeFile tmpFile
 
 -- | Append a line to a file, creating it if needed.
 appendToFile :: String -> FilePath -> IO ()
