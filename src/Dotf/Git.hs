@@ -246,7 +246,7 @@ gitSparseCheckoutDisable env = runGit env ["sparse-checkout", "disable"]
 
 -- | Get git status, optionally scoped to specific paths.
 gitStatus :: GitEnv -> [FilePath] -> IO (Either DotfError String)
-gitStatus env paths = runGitOutput env (["status", "-sb", "--color=always"] ++ ["--" | not (null paths)] ++ paths)
+gitStatus env paths = runGitOutput env (["-c", "color.status=always", "status", "-sb"] ++ ["--" | not (null paths)] ++ paths)
 
 -- | Get full diff (with ANSI color for terminal output).
 gitDiff :: GitEnv -> IO (Either DotfError String)
