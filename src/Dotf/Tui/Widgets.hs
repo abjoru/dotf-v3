@@ -52,7 +52,8 @@ helpBar st =
         Just IgnorePopup -> (ignoreHelp1, [])
         Just FilterPopup     -> (filterHelp1, [])
         Just NewPluginPopup  -> (newPluginHelp1, [])
-        Just NewProfilePopup -> (newProfileHelp1, [])
+        Just NewProfilePopup  -> (newProfileHelp1, [])
+        Just EditProfilePopup -> (editProfileHelp1, [])
         Just PackagePopup    -> (packageHelp1, [])
         Just AiMenuPopup     -> (aiMenuHelp1, [])
         Just HelpPopup       -> (helpPopupHelp1, [])
@@ -89,7 +90,7 @@ helpBar st =
         [ ("j/k", "Up/Down"), ("Tab", "Switch Focus"), ("?", "Help"), ("q", "Quit")
         ]
       profilesHelp2 =
-        [ ("n", "New"), ("e", "Edit"), ("D", "Delete")
+        [ ("n", "New"), ("e", "Edit"), ("p", "Plugins"), ("D", "Delete")
         , ("a", "Activate"), ("x", "Deactivate")
         ]
       saveHelp1 =
@@ -113,6 +114,9 @@ helpBar st =
         ]
       newProfileHelp1 =
         [ ("Tab", "Switch Field"), ("Space", "Toggle"), ("Enter", "Create"), ("Esc", "Cancel")
+        ]
+      editProfileHelp1 =
+        [ ("Space", "Toggle"), ("Enter", "Save"), ("Esc", "Cancel")
         ]
       packageHelp1 =
         [ ("Space", "Toggle"), ("a", "All"), ("n", "None"), ("Enter", "Install"), ("Esc", "Skip")

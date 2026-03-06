@@ -19,6 +19,7 @@ import qualified Graphics.Vty           as V
 import           Lens.Micro             ((^.))
 import           Lens.Micro.Mtl         (use, zoom, (.=))
 
+
 -- | Handle events in Profiles tab.
 handleProfilesEvent :: BrickEvent RName DEvent -> EventM RName State ()
 -- n: new profile popup
@@ -33,6 +34,15 @@ handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'e') [])) = do
   suspendAndResume $ do
     editFile (profilesFile env)
     syncProfiles st
+
+-- p: edit profile plugins
+handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'p') [])) = do
+  mProf <- getSelectedProfile
+  case mProf of
+    Nothing     -> pure ()
+    Just (p, _) -> do
+      st <- get
+      put $ openEditProfilePopup p st
 
 -- D: delete profile (triggers confirm)
 handleProfilesEvent (VtyEvent (V.EvKey (V.KChar 'D') [])) = do

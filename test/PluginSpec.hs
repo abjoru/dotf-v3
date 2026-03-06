@@ -68,6 +68,20 @@ spec = do
           resolved `shouldContain` ["b"]
           resolved `shouldContain` ["c"]
 
+    it "handles shared dependency across targets" $ do
+      let plugins = Map.fromList
+            [ ("a", Plugin "a" Nothing [] ["c"] Nothing [] [] [])
+            , ("b", Plugin "b" Nothing [] ["c"] Nothing [] [] [])
+            , ("c", Plugin "c" Nothing [] []    Nothing [] [] [])
+            ]
+      case resolveDependencies plugins ["a", "b"] of
+        Left err -> expectationFailure $ show err
+        Right resolved -> do
+          resolved `shouldContain` ["a"]
+          resolved `shouldContain` ["b"]
+          resolved `shouldContain` ["c"]
+          length resolved `shouldBe` 3
+
     it "targets included in result" $ hedgehog $ do
       cfg <- forAll genPluginConfig
       let pmap = _pcPlugins cfg

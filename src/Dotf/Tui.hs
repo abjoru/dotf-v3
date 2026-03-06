@@ -8,8 +8,10 @@ import qualified Brick.Widgets.Border  as B
 import qualified Brick.Widgets.Center  as C
 import qualified Brick.Widgets.Edit    as E
 import qualified Brick.Widgets.List    as L
+import qualified Data.Set              as Set
 import qualified Data.Text             as T
 import qualified Data.Vector           as V
+import           Dotf.Plugin           (resolveDependencies)
 import           Dotf.Tui.Events       (handleEvent)
 import           Dotf.Tui.Tab.Dotfiles (drawDotfilesTab)
 import           Dotf.Tui.Tab.Plugins  (drawPluginsTab)
@@ -17,7 +19,7 @@ import           Dotf.Tui.Tab.Profiles (drawProfilesTab)
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
 import           Dotf.Tui.Widgets      (helpBar, tabBar)
-import           Dotf.Types            (GitEnv, PluginName)
+import           Dotf.Types            (GitEnv, PluginName, _pcPlugins)
 import           Lens.Micro            ((^.))
 
 -- | Launch the TUI.
@@ -51,6 +53,7 @@ chooseCursor st = case st ^. stPopup of
   Just NewProfilePopup -> case st ^. stFocus of
     FNewProfileName -> showCursorNamed RNewProfileName
     _               -> const Nothing
+  Just EditProfilePopup -> const Nothing
   Just PackagePopup -> const Nothing
   Just AiMenuPopup  -> const Nothing
   Just HelpPopup    -> const Nothing
@@ -71,16 +74,17 @@ drawUI st = popupLayer ++ [mainLayer]
       Nothing -> case st ^. stConfirm of
         Just (msg, _) -> [confirmDialog msg]
         Nothing -> case st ^. stPopup of
-          Just SavePopup       -> [drawSavePopup st]
-          Just AssignPopup     -> [drawAssignPopup st]
-          Just IgnorePopup     -> [drawIgnorePopup st]
-          Just FilterPopup     -> [drawFilterPopup st]
-          Just NewPluginPopup  -> [drawNewPluginPopup st]
-          Just NewProfilePopup -> [drawNewProfilePopup st]
-          Just PackagePopup    -> [drawPackagePopup st]
-          Just AiMenuPopup     -> [drawAiMenuPopup st]
-          Just HelpPopup       -> [drawHelpOverlay]
-          Nothing              -> []
+          Just SavePopup        -> [drawSavePopup st]
+          Just AssignPopup      -> [drawAssignPopup st]
+          Just IgnorePopup      -> [drawIgnorePopup st]
+          Just FilterPopup      -> [drawFilterPopup st]
+          Just NewPluginPopup   -> [drawNewPluginPopup st]
+          Just NewProfilePopup  -> [drawNewProfilePopup st]
+          Just EditProfilePopup -> [drawEditProfilePopup st]
+          Just PackagePopup     -> [drawPackagePopup st]
+          Just AiMenuPopup      -> [drawAiMenuPopup st]
+          Just HelpPopup        -> [drawHelpOverlay]
+          Nothing               -> []
 
 -- | Render tab body.
 tabContent :: State -> Widget RName
@@ -192,21 +196,58 @@ drawNewPluginPopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFoc
 
 -- | New profile popup.
 drawNewProfilePopup :: State -> Widget RName
-drawNewProfilePopup st = C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " New Profile ") $
-  hLimit 50 $ vLimit 20 $ padAll 1 $ vBox
-    [ withAttr (if st ^. stFocus == FNewProfileName then attrTitleFocus else attrTitle) $ str "Name:"
-    , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewProfileName) (st ^. stNewProfileName)
-    , str ""
-    , withAttr (if st ^. stFocus == FNewProfilePlugins then attrTitleFocus else attrTitle) $ str "Plugins:"
-    , vLimit 10 $ L.renderList renderToggleItem (st ^. stFocus == FNewProfilePlugins) (st ^. stNewProfilePlugins)
-    ]
+drawNewProfilePopup st =
+  let depSet = resolvedDepSet st
+  in C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str " New Profile ") $
+       hLimit 50 $ vLimit 20 $ padAll 1 $ vBox
+         [ withAttr (if st ^. stFocus == FNewProfileName then attrTitleFocus else attrTitle) $ str "Name:"
+         , vLimit 1 $ E.renderEditor (str . unlines) (st ^. stFocus == FNewProfileName) (st ^. stNewProfileName)
+         , str ""
+         , withAttr (if st ^. stFocus == FNewProfilePlugins then attrTitleFocus else attrTitle) $ str "Plugins:"
+         , vLimit 10 $ L.renderList (renderToggleItem depSet) (st ^. stFocus == FNewProfilePlugins) (st ^. stNewProfilePlugins)
+         ]
 
--- | Render a toggle list item (plugin selection).
-renderToggleItem :: Bool -> (PluginName, Bool) -> Widget RName
-renderToggleItem sel (name, checked) =
-  let icon = if checked then "[x] " else "[ ] "
-      a = if sel then attrSelItem else attrItem
-  in withAttr a $ str $ icon ++ show name
+-- | Edit profile plugins popup.
+drawEditProfilePopup :: State -> Widget RName
+drawEditProfilePopup st =
+  let title = case st ^. stEditProfileName of
+        Just n  -> " Edit: " ++ T.unpack n ++ " "
+        Nothing -> " Edit Profile "
+      depSet = resolvedDepSet st
+  in C.centerLayer $ B.borderWithLabel (withAttr attrTitleFocus $ str title) $
+       hLimit 50 $ vLimit 18 $ padAll 1 $ vBox
+         [ withAttr attrBold $ str "Select plugins:"
+         , vLimit 12 $ L.renderList (renderToggleItem depSet) True (st ^. stNewProfilePlugins)
+         , B.hBorder
+         , withAttr attrHelpKey (str "Space") <+> str " toggle  " <+>
+           withAttr attrHelpKey (str "Enter") <+> str " save  " <+>
+           withAttr attrHelpKey (str "Esc") <+> str " cancel"
+         ]
+
+-- | Compute the set of plugin names included only as dependencies (not explicitly selected).
+resolvedDepSet :: State -> Set.Set PluginName
+resolvedDepSet st =
+  let items    = V.toList $ L.listElements (st ^. stNewProfilePlugins)
+      selected = [n | (n, True) <- items]
+      selSet   = Set.fromList selected
+      pluginMap = _pcPlugins (st ^. stPluginConfig)
+      resolved = case resolveDependencies pluginMap selected of
+                   Right rs -> Set.fromList rs
+                   Left _   -> selSet
+  in Set.difference resolved selSet
+
+-- | Render a toggle list item (plugin selection) with dependency awareness.
+renderToggleItem :: Set.Set PluginName -> Bool -> (PluginName, Bool) -> Widget RName
+renderToggleItem depSet sel (name, checked)
+  | checked =
+      let a = if sel then attrSelItem else attrItem
+      in withAttr a $ str $ "[x] " ++ T.unpack name
+  | Set.member name depSet =
+      let a = if sel then attrDepSelItem else attrDepItem
+      in withAttr a $ str $ "[~] " ++ T.unpack name ++ " (dep)"
+  | otherwise =
+      let a = if sel then attrSelItem else attrItem
+      in withAttr a $ str $ "[ ] " ++ T.unpack name
 
 -- | Package selection popup.
 drawPackagePopup :: State -> Widget RName
@@ -262,6 +303,7 @@ drawHelpOverlay =
       , helpSection "Ignore Popup" ignoreKeys
       , helpSection "New Plugin Popup" newPluginKeys
       , helpSection "New Profile Popup" newProfileKeys
+      , helpSection "Edit Profile Popup" editProfileKeys
       , helpSection "Package Popup" packageKeys
       , helpSection "AI Menu Popup" aiMenuKeys
       ]
@@ -309,6 +351,7 @@ drawHelpOverlay =
       [ ("j/k", "Move cursor down/up")
       , ("n",   "Create new profile")
       , ("e",   "Edit profile in $EDITOR")
+      , ("p",   "Edit profile plugins")
       , ("D",   "Delete profile")
       , ("a",   "Activate profile")
       , ("x",   "Deactivate current profile")
@@ -341,6 +384,11 @@ drawHelpOverlay =
       [ ("Tab",   "Switch between name and plugin list")
       , ("Space", "Toggle plugin selection")
       , ("Enter", "Create profile")
+      , ("Esc",   "Cancel")
+      ]
+    editProfileKeys =
+      [ ("Space", "Toggle plugin selection")
+      , ("Enter", "Save changes")
       , ("Esc",   "Cancel")
       ]
     packageKeys =

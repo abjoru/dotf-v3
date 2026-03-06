@@ -7,6 +7,7 @@ module Dotf.Profile (
   showActiveProfile,
   profileCoverage,
   createProfile,
+  updateProfilePlugins,
   deleteProfile,
   activateProfile,
   deactivateProfile,
@@ -73,6 +74,21 @@ createProfile env name pluginNames = do
             newCfg = cfg { _prfProfiles = Map.insert name newProfile (_prfProfiles cfg) }
         saveProfileConfig env newCfg
         pure $ Right ()
+
+-- | Update the plugin list for an existing profile.
+updateProfilePlugins :: GitEnv -> ProfileName -> [PluginName] -> IO (Either DotfError ())
+updateProfilePlugins env name pluginNames = do
+  cfgResult <- loadProfileConfig env
+  case cfgResult of
+    Left err -> pure $ Left err
+    Right cfg ->
+      case Map.lookup name (_prfProfiles cfg) of
+        Nothing -> pure $ Left $ ProfileNotFound name
+        Just p  -> do
+          let updated = p { _profilePlugins = pluginNames }
+              newCfg  = cfg { _prfProfiles = Map.insert name updated (_prfProfiles cfg) }
+          saveProfileConfig env newCfg
+          pure $ Right ()
 
 -- | Delete a profile definition.
 deleteProfile :: GitEnv -> ProfileName -> IO (Either DotfError ())

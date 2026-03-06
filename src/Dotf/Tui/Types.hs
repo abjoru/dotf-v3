@@ -35,6 +35,7 @@ module Dotf.Tui.Types (
   openIgnorePopup,
   openNewPluginPopup,
   openNewProfilePopup,
+  openEditProfilePopup,
   openPackagePopup,
   pathSegments,
 
@@ -49,6 +50,7 @@ module Dotf.Tui.Types (
   stIgnoreList,
   stNewPluginName, stNewPluginDesc,
   stNewProfileName, stNewProfilePlugins,
+  stEditProfileName,
   stAiMenuList,
   stPkgItems, stPkgDistro,
   stDetailAdvanced,
@@ -113,7 +115,7 @@ data Focus
   | FAiMenu
   deriving (Eq, Show, Ord)
 
-data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | PackagePopup | AiMenuPopup | HelpPopup
+data Popup = SavePopup | AssignPopup | IgnorePopup | FilterPopup | NewPluginPopup | NewProfilePopup | EditProfilePopup | PackagePopup | AiMenuPopup | HelpPopup
   deriving (Eq, Show, Ord)
 
 -- | Resource names for Brick widgets.
@@ -249,6 +251,9 @@ data State = State
   , _stNewProfileName    :: E.Editor String RName
   , _stNewProfilePlugins :: L.List RName (PluginName, Bool)
 
+  -- Edit profile plugins popup
+  , _stEditProfileName   :: Maybe ProfileName
+
   -- Filter
   , _stFilterEditor      :: E.Editor String RName
   , _stFilterActive      :: Bool
@@ -363,6 +368,7 @@ buildState env = do
     , _stNewPluginDesc    = E.editor RNewPluginDesc (Just 1) ""
     , _stNewProfileName    = E.editor RNewProfileName (Just 1) ""
     , _stNewProfilePlugins = L.list RNewProfilePlugins V.empty 1
+    , _stEditProfileName   = Nothing
     , _stFilterEditor  = E.editor RFilterEditor (Just 1) ""
     , _stFilterActive  = False
     , _stConfirm       = Nothing
@@ -619,6 +625,18 @@ openNewProfilePopup st =
     & stNewProfilePlugins .~ L.list RNewProfilePlugins (V.fromList items) 1
     & stPopup             .~ Just NewProfilePopup
     & stFocus             .~ FNewProfileName
+
+-- | Open edit profile plugins popup for the selected profile.
+openEditProfilePopup :: Profile -> State -> State
+openEditProfilePopup p st =
+  let plugins  = Map.toAscList $ _pcPlugins (st ^. stPluginConfig)
+      current  = Set.fromList (_profilePlugins p)
+      items    = map (\(n, _) -> (n, Set.member n current)) plugins
+  in st
+    & stEditProfileName   .~ Just (_profileName p)
+    & stNewProfilePlugins .~ L.list RNewProfilePlugins (V.fromList items) 1
+    & stPopup             .~ Just EditProfilePopup
+    & stFocus             .~ FNewProfilePlugins
 
 -- | Open package popup with missing packages (all selected by default).
 openPackagePopup :: Distro -> [Text] -> [Text] -> State -> State

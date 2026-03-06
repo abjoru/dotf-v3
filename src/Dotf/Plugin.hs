@@ -32,28 +32,29 @@ import           Dotf.Types
 
 -- | Topological sort of plugin dependencies.
 -- Returns all plugins needed (including transitive deps) in install order.
--- Two-pass: DFS to collect in dependency order, then deduplicate keeping first occurrence.
+-- Uses two sets: @visited@ (fully resolved, skip on revisit) and @path@
+-- (current DFS ancestors, used for cycle detection).
 resolveDependencies :: Map.Map PluginName Plugin
                     -> [PluginName]
                     -> Either DotfError [PluginName]
-resolveDependencies plugins targets = nubKeepFirst <$> go Set.empty targets
+resolveDependencies plugins targets = nubKeepFirst <$> go Set.empty Set.empty targets
   where
-    go _       []     = Right []
-    go visited (x:xs)
-      | Set.member x visited = go visited xs
-      | otherwise = case Map.lookup x plugins of
-          Nothing -> Left $ PluginNotFound x
-          Just p  -> do
-            let visited' = Set.insert x visited
-            -- Check for cycles: deps that are already being visited
-            let depCycles = filter (`Set.member` visited') (_pluginDepends p)
-            case depCycles of
-              (c:_) -> Left $ DependencyError $
-                T.concat ["Circular dependency detected involving: ", c]
-              [] -> do
-                deps <- go visited' (_pluginDepends p)
-                rest <- go (Set.union visited' (Set.fromList (map fst (zip deps deps)))) xs
-                pure $ deps ++ [x] ++ rest
+    go _       _    []     = Right []
+    go visited _    (x:xs) | Set.member x visited = go visited Set.empty xs
+    go visited path (x:xs) = case Map.lookup x plugins of
+      Nothing -> Left $ PluginNotFound x
+      Just p  -> do
+        let path' = Set.insert x path
+        -- Cycle: a dep is already an ancestor in the current DFS path
+        let cycles = filter (`Set.member` path') (_pluginDepends p)
+        case cycles of
+          (c:_) -> Left $ DependencyError $
+            T.concat ["Circular dependency detected involving: ", c]
+          [] -> do
+            deps <- go visited path' (_pluginDepends p)
+            let visited' = Set.union visited (Set.fromList (x : deps))
+            rest <- go visited' Set.empty xs
+            pure $ deps ++ [x] ++ rest
 
     nubKeepFirst = go' Set.empty
       where

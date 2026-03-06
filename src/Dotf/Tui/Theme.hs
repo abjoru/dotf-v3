@@ -24,6 +24,8 @@ module Dotf.Tui.Theme (
   attrStatusOk,
   attrStatusDirty,
   attrStatusBehind,
+  attrDepItem,
+  attrDepSelItem,
   attrFrozenItem,
   attrFrozenSelItem,
   attrError,
@@ -82,6 +84,9 @@ theme = newTheme
   , (attrStatusOk, fg brightGreen)
   , (attrStatusDirty, withStyle (fg red) bold)
   , (attrStatusBehind, withStyle (fg brightYellow) bold)
+  -- Dependencies
+  , (attrDepItem, fg brightBlack)
+  , (attrDepSelItem, brightBlack `on` yellow)
   -- Frozen
   , (attrFrozenItem, fg brightMagenta)
   , (attrFrozenSelItem, brightMagenta `on` yellow)
@@ -127,6 +132,10 @@ attrActiveItem    = attrName "active-item"
 attrHelpKey, attrHelpDesc :: AttrName
 attrHelpKey  = attrName "help-key"
 attrHelpDesc = attrName "help-desc"
+
+attrDepItem, attrDepSelItem :: AttrName
+attrDepItem    = attrName "dep-item"
+attrDepSelItem = attrName "dep-sel-item"
 
 attrFrozenItem, attrFrozenSelItem :: AttrName
 attrFrozenItem    = attrName "frozen-item"

@@ -2,34 +2,35 @@ module Dotf.Tui.Events (
   handleEvent,
 ) where
 
-import           Brick                     (BrickEvent (..), halt,
-                                            suspendAndResume, vScrollBy,
-                                            viewportScroll)
-import           Brick.Types               (EventM, get, put)
-import qualified Brick.Widgets.Edit        as E
-import qualified Brick.Widgets.List        as L
-import           Control.Monad.IO.Class    (liftIO)
-import qualified Data.Set                  as Set
-import           Dotf.Commands             (runSuggestAssign, runSuggestIgnore)
-import           Dotf.Plugin               (deletePlugin, removePlugins)
-import           Dotf.Profile              (checkCoverage, deactivateProfile,
-                                            deleteProfile)
-import           Dotf.Tracking             (freezeFile, unfreezeFile,
-                                            untrackFile)
-import           Dotf.Tui.Event.Assign     (handleAssignEvent)
-import           Dotf.Tui.Event.Dotfiles   (handleDotfilesEvent)
-import           Dotf.Tui.Event.Ignore     (handleIgnoreEvent)
-import           Dotf.Tui.Event.NewPlugin  (handleNewPluginEvent)
-import           Dotf.Tui.Event.NewProfile (handleNewProfileEvent)
-import           Dotf.Tui.Event.Packages   (handlePackageEvent)
-import           Dotf.Tui.Event.Plugins    (handlePluginsEvent)
-import           Dotf.Tui.Event.Profiles   (handleProfilesEvent)
-import           Dotf.Tui.Event.Save       (handleSaveEvent)
+import           Brick                      (BrickEvent (..), halt,
+                                             suspendAndResume, vScrollBy,
+                                             viewportScroll)
+import           Brick.Types                (EventM, get, put)
+import qualified Brick.Widgets.Edit         as E
+import qualified Brick.Widgets.List         as L
+import           Control.Monad.IO.Class     (liftIO)
+import qualified Data.Set                   as Set
+import           Dotf.Commands              (runSuggestAssign, runSuggestIgnore)
+import           Dotf.Plugin                (deletePlugin, removePlugins)
+import           Dotf.Profile               (checkCoverage, deactivateProfile,
+                                             deleteProfile)
+import           Dotf.Tracking              (freezeFile, unfreezeFile,
+                                             untrackFile)
+import           Dotf.Tui.Event.Assign      (handleAssignEvent)
+import           Dotf.Tui.Event.Dotfiles    (handleDotfilesEvent)
+import           Dotf.Tui.Event.EditProfile (handleEditProfileEvent)
+import           Dotf.Tui.Event.Ignore      (handleIgnoreEvent)
+import           Dotf.Tui.Event.NewPlugin   (handleNewPluginEvent)
+import           Dotf.Tui.Event.NewProfile  (handleNewProfileEvent)
+import           Dotf.Tui.Event.Packages    (handlePackageEvent)
+import           Dotf.Tui.Event.Plugins     (handlePluginsEvent)
+import           Dotf.Tui.Event.Profiles    (handleProfilesEvent)
+import           Dotf.Tui.Event.Save        (handleSaveEvent)
 import           Dotf.Tui.Types
-import           Dotf.Types                (_pcPlugins, displayError)
-import qualified Graphics.Vty              as V
-import           Lens.Micro                ((^.))
-import           Lens.Micro.Mtl            (use, zoom, (.=))
+import           Dotf.Types                 (_pcPlugins, displayError)
+import qualified Graphics.Vty               as V
+import           Lens.Micro                 ((^.))
+import           Lens.Micro.Mtl             (use, zoom, (.=))
 
 -- | Top-level event dispatcher.
 -- Priority: error > confirm > popup > global keys > tab handler
@@ -54,8 +55,9 @@ handleEvent ev = do
     (_, _, Just IgnorePopup)     -> handleIgnoreEvent ev
     (_, _, Just FilterPopup)     -> handleFilterPopup ev
     (_, _, Just NewPluginPopup)  -> handleNewPluginEvent ev
-    (_, _, Just NewProfilePopup) -> handleNewProfileEvent ev
-    (_, _, Just PackagePopup)    -> handlePackageEvent ev
+    (_, _, Just NewProfilePopup)  -> handleNewProfileEvent ev
+    (_, _, Just EditProfilePopup) -> handleEditProfileEvent ev
+    (_, _, Just PackagePopup)     -> handlePackageEvent ev
     (_, _, Just AiMenuPopup)     -> handleAiMenuEvent ev
     (_, _, Just HelpPopup)       -> handleHelpEvent ev
 

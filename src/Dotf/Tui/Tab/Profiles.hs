@@ -5,7 +5,9 @@ module Dotf.Tui.Tab.Profiles (
 import           Brick
 import           Brick.Widgets.Border (borderWithLabel)
 import qualified Brick.Widgets.List   as L
+import qualified Data.Set             as Set
 import qualified Data.Text            as T
+import           Dotf.Plugin          (resolveDependencies)
 import           Dotf.Tui.Theme
 import           Dotf.Tui.Types
 import           Dotf.Tui.Widgets     (titleWidget)
@@ -48,23 +50,35 @@ renderDetail st =
     Just (_, (p, active)) ->
       let name       = T.unpack (_profileName p)
           plugins    = _profilePlugins p
+          pluginMap  = _pcPlugins (st ^. stPluginConfig)
           installed  = _lsInstalledPlugins (st ^. stLocalState)
           actLabel   = if active then "Yes" else "No"
+          directSet  = Set.fromList plugins
+          resolved   = case resolveDependencies pluginMap plugins of
+                         Right rs -> rs
+                         Left _   -> plugins
       in padAll 1 $ vBox
         [ field "Name" name
         , field "Active" actLabel
         , str ""
         , withAttr attrBold $ str "Plugins:"
-        , vBox $ map (renderPluginStatus installed) plugins
+        , vBox $ map (renderPluginStatus installed directSet) resolved
         ]
 
 -- | Render a plugin in profile detail with install status.
-renderPluginStatus :: [PluginName] -> PluginName -> Widget n
-renderPluginStatus installed name =
+renderPluginStatus :: [PluginName] -> Set.Set PluginName -> PluginName -> Widget n
+renderPluginStatus installed directSet name =
   let isInstalled = name `elem` installed
-      icon = if isInstalled then "[*] " else "[ ] "
-      a = if isInstalled then attrInstalledItem else attrItem
-  in withAttr a $ str $ "  " ++ icon ++ T.unpack name
+      isDep       = not (Set.member name directSet)
+      icon | isInstalled && isDep = "[~] "
+           | isInstalled          = "[*] "
+           | isDep                = "[~] "
+           | otherwise            = "[ ] "
+      suffix = if isDep then " (dep)" else ""
+      a | isDep       = attrDepItem
+        | isInstalled = attrInstalledItem
+        | otherwise   = attrItem
+  in withAttr a $ str $ "  " ++ icon ++ T.unpack name ++ suffix
 
 -- | Render a labeled field.
 field :: String -> String -> Widget n
