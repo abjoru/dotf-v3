@@ -1,0 +1,304 @@
+.TH DOTF 1 "2026-03-14" "dotf 3.0.11" "User Commands"
+.SH NAME
+dotf \- modular dotfile manager using git bare repo with sparse checkout
+.SH SYNOPSIS
+.B dotf
+[\fICOMMAND\fR] [\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B dotf
+manages dotfiles through a git bare repository at \fI~/.dotf/\fR with sparse
+checkout.
+Files are organized into plugins (logical groups) and profiles (sets of
+plugins).
+Running
+.B dotf
+with no arguments launches the interactive TUI.
+.SH SETUP COMMANDS
+.TP
+.B init \fIREPO_URL\fR [\-p \fINAME\fR]
+Clone a bare repo from \fIREPO_URL\fR and set up sparse checkout.
+Optionally activate profile \fINAME\fR after clone.
+.TP
+.B new
+Create a new bare repository at \fI~/.dotf/\fR.
+.TP
+.B migrate
+Scaffold v3 metadata files on an existing bare repo.
+.SH PLUGIN COMMANDS
+.TP
+.B plugin list
+List all defined plugins.
+.TP
+.B plugin new \fINAME\fR [\-\-desc \fITEXT\fR]
+Create a new plugin with optional description.
+.TP
+.B plugin delete \fINAME\fR
+Delete a plugin definition.
+.TP
+.B plugin install \fINAME\fR...
+Install one or more plugins (resolves dependencies via topological sort).
+.TP
+.B plugin remove \fINAME\fR...
+Remove one or more installed plugins.
+.TP
+.B plugin info \fINAME\fR
+Show detailed information about a plugin.
+.SH PROFILE COMMANDS
+.TP
+.B profile list
+List all defined profiles.
+.TP
+.B profile new \fINAME\fR \-\-plugins \fIa,b,c\fR
+Create a profile with the given comma-separated plugin list.
+.TP
+.B profile delete \fINAME\fR
+Delete a profile definition.
+.TP
+.B profile activate \fINAME\fR
+Activate a profile, installing its plugins.
+.TP
+.B profile deactivate
+Deactivate the current profile.
+.TP
+.B profile show
+Show the currently active profile.
+.SH TRACKING COMMANDS
+.TP
+.B track \fIFILE\fR [\-p \fINAME\fR]
+Start tracking a file. Optionally assign it to plugin \fINAME\fR.
+.TP
+.B untrack \fIFILE\fR
+Stop tracking a file.
+.TP
+.B ignore \fIPATTERN\fR
+Add a pattern to \fI.gitignore\fR.
+.TP
+.B freeze \fIFILE\fR
+Freeze a tracked file (set skip-worktree bit). Local changes will not appear
+in status or be committed.
+.TP
+.B unfreeze \fIFILE\fR
+Unfreeze a previously frozen file.
+.TP
+.B frozen
+List all frozen files.
+.SH DISCOVERY COMMANDS
+.TP
+.B untracked [\-p \fINAME\fR]
+List untracked files. Optionally scope to a plugin's watch paths.
+.TP
+.B watchlist add \fIPATH\fR
+Add a path to the watchlist.
+.TP
+.B watchlist remove \fIPATH\fR
+Remove a path from the watchlist.
+.TP
+.B watchlist list
+List all watchlist paths.
+.SH SAVE & GIT COMMANDS
+.TP
+.B save [\fIMSG\fR]
+Auto-stage tracked changes, commit with optional message, and push.
+.TP
+.B stage \fIFILE\fR...
+Stage one or more files.
+.TP
+.B unstage \fIFILE\fR...
+Unstage one or more files.
+.TP
+.B commit [\fIMSG\fR]
+Commit staged changes with optional message.
+.TP
+.B push
+Push to the remote repository.
+.TP
+.B pull
+Pull from the remote repository.
+.TP
+.B status
+Show git status of tracked dotfiles.
+.TP
+.B diff
+Show git diff of tracked dotfiles.
+.TP
+.B git \fIARGS\fR...
+Pass arguments directly to git (bare repo context).
+.SH MAINTENANCE COMMANDS
+.TP
+.B consolidate [\-\-apply]
+Consolidate plugin paths. Runs as dry-run by default; pass \fB\-\-apply\fR to
+execute changes.
+.TP
+.B packages [\-\-install]
+List OS packages for active plugins. Pass \fB\-\-install\fR to install missing
+packages.
+.SH AI-ASSISTED COMMANDS
+.TP
+.B suggest\-ignore
+AI-assisted gitignore pattern suggestions.
+.TP
+.B suggest\-assign
+AI-assisted file-to-plugin assignment.
+.TP
+.B resolve
+AI-assisted merge conflict resolution.
+.SH EXAMPLES
+.SS Getting started
+Clone an existing dotfile repo and activate a profile:
+.PP
+.RS 4
+.nf
+$ dotf init git@github.com:user/dotfiles.git \-p workstation
+.fi
+.RE
+.PP
+Or start from scratch:
+.PP
+.RS 4
+.nf
+$ dotf new
+.fi
+.RE
+.SS Plugin workflow
+Create a plugin, track files into it, then install:
+.PP
+.RS 4
+.nf
+$ dotf plugin new zsh \-\-desc "Zsh configuration"
+$ dotf track ~/.zshrc \-p zsh
+$ dotf track ~/.zshenv \-p zsh
+$ dotf plugin install zsh
+.fi
+.RE
+.PP
+Install multiple plugins at once (dependencies resolved automatically):
+.PP
+.RS 4
+.nf
+$ dotf plugin install neovim tmux git
+.fi
+.RE
+.PP
+Inspect a plugin's files and dependencies:
+.PP
+.RS 4
+.nf
+$ dotf plugin info neovim
+.fi
+.RE
+.SS Profile workflow
+Create a profile grouping several plugins, then activate it:
+.PP
+.RS 4
+.nf
+$ dotf profile new laptop \-\-plugins zsh,neovim,tmux,git
+$ dotf profile activate laptop
+.fi
+.RE
+.PP
+Switch machines by activating a different profile:
+.PP
+.RS 4
+.nf
+$ dotf profile activate server
+.fi
+.RE
+.SS Day-to-day usage
+Quick save \(em stages all tracked changes, commits, and pushes:
+.PP
+.RS 4
+.nf
+$ dotf save "update neovim config"
+.fi
+.RE
+.PP
+Or do it step by step:
+.PP
+.RS 4
+.nf
+$ dotf status
+$ dotf stage ~/.config/nvim/init.lua
+$ dotf commit "tweak nvim keybindings"
+$ dotf push
+.fi
+.RE
+.PP
+Check what's not yet tracked:
+.PP
+.RS 4
+.nf
+$ dotf untracked
+$ dotf untracked \-p zsh
+.fi
+.RE
+.SS Freezing files
+Freeze a file to keep local changes out of commits:
+.PP
+.RS 4
+.nf
+$ dotf freeze ~/.config/settings.json
+$ dotf frozen
+$ dotf unfreeze ~/.config/settings.json
+.fi
+.RE
+.SS Watchlist
+Monitor directories for new untracked files:
+.PP
+.RS 4
+.nf
+$ dotf watchlist add ~/.config/nvim
+$ dotf watchlist list
+.fi
+.RE
+.SS Maintenance
+Dry-run path consolidation, then apply:
+.PP
+.RS 4
+.nf
+$ dotf consolidate
+$ dotf consolidate \-\-apply
+.fi
+.RE
+.PP
+List or install OS packages declared by active plugins:
+.PP
+.RS 4
+.nf
+$ dotf packages
+$ dotf packages \-\-install
+.fi
+.RE
+.SS Raw git access
+Pass arbitrary git commands through the bare repo:
+.PP
+.RS 4
+.nf
+$ dotf git log \-\-oneline \-10
+$ dotf git remote \-v
+.fi
+.RE
+.SH OPTIONS
+.TP
+.B \-\-version
+Show version information.
+.TP
+.B \-\-help
+Show help text.
+.SH FILES
+.TP
+.I ~/.dotf/
+Git bare repository.
+.TP
+.I ~/.config/dotf/plugins.yaml
+Plugin definitions and watchlist (tracked).
+.TP
+.I ~/.config/dotf/profiles.yaml
+Profile definitions (tracked).
+.TP
+.I ~/.local/state/dotf/state.yaml
+Runtime state: active profile, installed plugins (not tracked).
+.SH AUTHORS
+Andreas Bjoru <andreas.bjoru@gmail.com>
+.SH SEE ALSO
+.BR git (1),
+.BR git\-sparse\-checkout (1)
