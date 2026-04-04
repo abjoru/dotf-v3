@@ -6,7 +6,7 @@ Third iteration — rewritten in Haskell from the ground up with a TUI-first des
 
 ## Status
 
-![Version](https://img.shields.io/badge/version-3.0.12-blue)
+![Version](https://img.shields.io/badge/version-3.0.13-blue)
 ![License](https://img.shields.io/badge/license-BSD--3--Clause-green)
 ![Haskell](https://img.shields.io/badge/haskell-GHC_9.x-purple)
 
