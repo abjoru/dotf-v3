@@ -10,7 +10,8 @@ import qualified Brick.Widgets.Edit         as E
 import qualified Brick.Widgets.List         as L
 import           Control.Monad.IO.Class     (liftIO)
 import qualified Data.Set                   as Set
-import           Dotf.Commands              (runSuggestAssign, runSuggestIgnore)
+import           Dotf.Commands              (runSuggestAssign, runSuggestDeps,
+                                             runSuggestIgnore)
 import           Dotf.Plugin                (deletePlugin, removePlugins)
 import           Dotf.Profile               (checkCoverage, deactivateProfile,
                                              deleteProfile)
@@ -217,6 +218,13 @@ handleAiMenuEvent (VtyEvent (V.EvKey V.KEnter [])) = do
           suspendAndResume $ do
             runSuggestAssign env
             syncDotfiles st
+    Just (_, ("Deps", _)) -> do
+      let env = st ^. stEnv
+      stPopup .= Nothing
+      stFocus .= FTracked
+      suspendAndResume $ do
+        runSuggestDeps env Nothing
+        syncDotfiles st
     _ -> pure ()
 handleAiMenuEvent (VtyEvent ev) =
   zoom stAiMenuList $ L.handleListEventVi L.handleListEvent ev

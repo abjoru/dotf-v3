@@ -87,6 +87,7 @@ dispatchWithRepo env (GitRaw args)                     = runGitRaw env args
 dispatchWithRepo env (Packages install)                = runPackages env install
 dispatchWithRepo env SuggestIgnore                     = runSuggestIgnore env
 dispatchWithRepo env SuggestAssign                     = runSuggestAssign env
+dispatchWithRepo env (SuggestDeps mPlugin)             = runSuggestDeps env mPlugin
 dispatchWithRepo env Resolve                           = runResolveConflicts env
 
 -- Handled in dispatch before dispatchWithRepo is reached

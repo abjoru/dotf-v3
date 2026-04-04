@@ -44,6 +44,7 @@ module Dotf.Commands (
   -- * AI-assisted commands
   runSuggestIgnore,
   runSuggestAssign,
+  runSuggestDeps,
   runResolveConflicts,
 
   -- * Maintenance commands
@@ -753,6 +754,78 @@ runSuggestAssign env = do
         , "--append-system-prompt", context
         , initialPrompt
         ]
+
+runSuggestDeps :: GitEnv -> Maybe Text -> IO ()
+runSuggestDeps env mPlugin = do
+  hasClaude <- which "claude"
+  unless hasClaude $ do
+    putStrLn "Error: 'claude' CLI not found on PATH."
+    putStrLn "Install: curl -fsSL https://claude.ai/install.sh | bash"
+    dist <- detectDistro
+    case dist of
+      Arch -> putStrLn "    or:  paru -S claude-code"
+      Osx  -> putStrLn "    or:  brew install --cask claude-code"
+      _    -> pure ()
+    exitFailure
+  let home = _geHome env
+  pcfgE <- loadPluginConfig env
+  pcfg <- case pcfgE of
+    Left err -> do
+      hPutStrLn stderr $ "Warning: " ++ displayError err ++ " (using empty config)"
+      pure defaultPluginConfig
+    Right cfg -> pure cfg
+  dist <- detectDistro
+  let plugins' = case mPlugin of
+        Nothing -> Map.toList (_pcPlugins pcfg)
+        Just n  -> filter (\(k, _) -> k == n) (Map.toList (_pcPlugins pcfg))
+  when (null plugins') $ do
+    putStrLn $ "Plugin not found: " ++ maybe "" T.unpack mPlugin
+    exitFailure
+  let distLabel = case dist of
+        Arch              -> "arch (pacman/paru)"
+        Osx               -> "osx (homebrew)"
+        UnsupportedDistro -> "this system"
+      pluginDefs = unlines
+        [ "  " ++ T.unpack name ++ ":"
+          ++ "\n    paths: " ++ show (_pluginPaths p)
+          ++ "\n    arch: "  ++ show (_pluginArch p)
+          ++ "\n    osx: "   ++ show (_pluginOsx p)
+          ++ "\n    cask: "  ++ show (_pluginCask p)
+        | (name, p) <- plugins'
+        ]
+      context = unlines
+        [ "You are managing dotfiles in a git bare repo (~/.dotf/)."
+        , "HOME: " ++ home
+        , "Detected distro: " ++ show dist
+        , ""
+        , "Plugin definitions with current dependencies:"
+        , pluginDefs
+        , ""
+        , "Task: For each plugin, read its tracked dotfiles (paths are relative to HOME)."
+        , "Identify what applications they configure (e.g. .config/nvim → neovim,"
+        , ".config/hypr → hyprland, .zshrc → zsh). Then look up the correct package"
+        , "name for " ++ distLabel ++ "."
+        , ""
+        , "For Arch: use official repo names (extra/community). Use `pacman -Ss <name>`"
+        , "via Bash to verify package names exist."
+        , "For macOS: use `brew search <name>` to verify formula/cask names."
+        , ""
+        , "Compare your suggestions against existing arch/osx/cask lists for each plugin."
+        , "Only suggest packages that are NOT already listed."
+        , ""
+        , "Present suggestions grouped by plugin using AskUserQuestion with multiSelect."
+        , "After the user selects, update " ++ pluginsFile env ++ " via Edit to add the"
+        , "new packages to the appropriate arch/osx/cask arrays."
+        ]
+      initialPrompt = "Analyze plugin dotfiles and suggest missing package dependencies. "
+        ++ "Read the config files to identify apps, verify package names, "
+        ++ "then use AskUserQuestion to let me pick which to add."
+  callProcess "claude"
+    [ "--allowedTools", "Bash Read Edit Glob Grep AskUserQuestion"
+    , "--add-dir", home
+    , "--append-system-prompt", context
+    , initialPrompt
+    ]
 
 runResolveConflicts :: GitEnv -> IO ()
 runResolveConflicts env = do

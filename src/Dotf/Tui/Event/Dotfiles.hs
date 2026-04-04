@@ -81,6 +81,7 @@ handleDotfilesEvent (VtyEvent (V.EvKey (V.KChar 'A') [])) = do
   let items = L.list RAiMenuList (Vec.fromList
         [ ("Gitignore", "Suggest .gitignore rules for untracked files")
         , ("Autofill",  "Auto-assign untracked files to plugins")
+        , ("Deps",      "Suggest package dependencies for plugins")
         ]) 1
   stAiMenuList .= items
   stPopup .= Just AiMenuPopup

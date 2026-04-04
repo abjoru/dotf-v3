@@ -54,6 +54,7 @@ data Command
   | Frozen
   | SuggestIgnore
   | SuggestAssign
+  | SuggestDeps (Maybe Text)
   | Resolve
   deriving Show
 
@@ -113,6 +114,7 @@ parseCommand = hsubparser
   <> command "packages"  (info parsePackages  (progDesc "List/install OS packages for active plugins"))
   <> command "suggest-ignore" (info (pure SuggestIgnore) (progDesc "AI-assisted gitignore management"))
   <> command "suggest-assign" (info (pure SuggestAssign) (progDesc "AI-assisted file-to-plugin assignment"))
+  <> command "suggest-deps"  (info parseSuggestDeps     (progDesc "AI-assisted package dependency suggestions"))
   <> command "resolve" (info (pure Resolve) (progDesc "AI-assisted merge conflict resolution"))
   )
 
@@ -270,6 +272,10 @@ parsePackages = Packages
       (  long "install"
       <> help "Install missing packages"
       )
+
+parseSuggestDeps :: Parser Command
+parseSuggestDeps = SuggestDeps
+  <$> optional (argument (pack <$> str) (metavar "PLUGIN"))
 
 parseGitRaw :: Parser Command
 parseGitRaw = GitRaw
